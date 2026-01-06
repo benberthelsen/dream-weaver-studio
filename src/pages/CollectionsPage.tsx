@@ -10,78 +10,83 @@ import { CategoryTabs, SupplierCategory } from "@/components/collections/Categor
 import { LikedPalette } from "@/components/collections/LikedPalette";
 import { ProductCard } from "@/components/collections/ProductCard";
 import { SupplierCard } from "@/components/collections/SupplierCard";
-import { cn } from "@/lib/utils";
 
 export default function CollectionsPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<SupplierCategory>("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [kickMode, setKickMode] = useState<"standard" | "match_door">("standard");
 
   const { data: suppliers = [], isLoading: suppliersLoading } = useSuppliersWithCounts();
-  
-  // For kick finishes "match to door" mode, fetch door panel products
-  const effectiveSupplierCategory = selectedCategory === "kick_finishes" && kickMode === "match_door" 
-    ? "doors_panels" 
-    : undefined;
   
   const { data: items = [], isLoading: itemsLoading } = useCatalogItems({
     supplierId: selectedSupplier || undefined,
     search: searchTerm || undefined,
   });
 
-  // Filter items by supplier category when in kick_finishes match mode
-  const filteredItems = useMemo(() => {
-    if (selectedCategory === "kick_finishes" && kickMode === "match_door") {
-      // Show door panel products
-      return items.filter(item => {
-        const supplierCategory = suppliers.find(s => s.id === item.supplier_id)?.category;
-        return supplierCategory === "doors_panels";
-      });
-    }
-    if (selectedCategory === "kick_finishes" && kickMode === "standard") {
-      // Show only kick finishes suppliers
-      return items.filter(item => {
-        const supplierCategory = suppliers.find(s => s.id === item.supplier_id)?.category;
-        return supplierCategory === "kick_finishes";
-      });
-    }
-    return items;
-  }, [items, selectedCategory, kickMode, suppliers]);
+  // Map category tabs to usage_types
+  const usageTypeMap: Record<string, string[]> = {
+    bench_tops: ['bench_tops'],
+    doors_panels: ['doors', 'panels'],
+    kick_finishes: ['kicks'],
+    hardware: [],
+  };
 
-  // Calculate category counts
+  // Filter items by usage_types based on selected category
+  const filteredItems = useMemo(() => {
+    if (selectedCategory === "all") return items;
+    
+    if (selectedCategory === "hardware") {
+      // Hardware is still supplier-category based
+      return items.filter(item => {
+        const supplierCategory = suppliers.find(s => s.id === item.supplier_id)?.category;
+        return supplierCategory === "hardware";
+      });
+    }
+    
+    // Filter by usage_types
+    const usageTypes = usageTypeMap[selectedCategory] || [];
+    return items.filter(item => {
+      const itemUsages = (item as any).usage_types || [];
+      return usageTypes.some(usage => itemUsages.includes(usage));
+    });
+  }, [items, selectedCategory, suppliers]);
+
+  // Calculate category counts based on usage_types
   const categoryCounts = useMemo(() => {
     const counts = {
-      all: suppliers.length,
+      all: items.length,
       bench_tops: 0,
       doors_panels: 0,
       kick_finishes: 0,
       hardware: 0,
     };
     
-    suppliers.forEach((s) => {
-      const cat = (s as any).category || "doors_panels";
-      if (cat === "bench_tops") counts.bench_tops++;
-      else if (cat === "kick_finishes") counts.kick_finishes++;
-      else if (cat === "hardware") counts.hardware++;
-      else counts.doors_panels++;
+    items.forEach((item) => {
+      const usages = (item as any).usage_types || [];
+      const supplierCategory = suppliers.find(s => s.id === item.supplier_id)?.category;
+      
+      if (usages.includes('bench_tops')) counts.bench_tops++;
+      if (usages.includes('doors') || usages.includes('panels')) counts.doors_panels++;
+      if (usages.includes('kicks')) counts.kick_finishes++;
+      if (supplierCategory === 'hardware') counts.hardware++;
     });
     
     return counts;
-  }, [suppliers]);
+  }, [items, suppliers]);
 
-  // Filter suppliers by category
+  // Filter suppliers based on selected category (for display purposes)
   const filteredSuppliers = useMemo(() => {
     if (selectedCategory === "all") return suppliers;
-    // In kick_finishes match_door mode, show door panel suppliers
-    if (selectedCategory === "kick_finishes" && kickMode === "match_door") {
-      return suppliers.filter((s) => (s as any).category === "doors_panels");
+    if (selectedCategory === "hardware") {
+      return suppliers.filter((s) => (s as any).category === "hardware");
     }
-    return suppliers.filter((s) => {
-      const cat = (s as any).category || "doors_panels";
-      return cat === selectedCategory;
-    });
-  }, [suppliers, selectedCategory, kickMode]);
+    // For other categories, show suppliers that have products with matching usage_types
+    const usageTypes = usageTypeMap[selectedCategory] || [];
+    const supplierIdsWithProducts = new Set(
+      filteredItems.map(item => item.supplier_id).filter(Boolean)
+    );
+    return suppliers.filter(s => supplierIdsWithProducts.has(s.id) || !(s as any).category);
+  }, [suppliers, selectedCategory, filteredItems]);
 
   const handleSupplierClick = (supplierId: string) => {
     setSelectedSupplier(selectedSupplier === supplierId ? null : supplierId);
@@ -93,6 +98,17 @@ export default function CollectionsPage() {
   };
 
   const selectedSupplierData = suppliers.find((s) => s.id === selectedSupplier);
+
+  // Get category label for title
+  const getCategoryLabel = () => {
+    switch (selectedCategory) {
+      case 'bench_tops': return 'Bench Tops';
+      case 'doors_panels': return 'Doors & Panels';
+      case 'kick_finishes': return 'Kick Finishes';
+      case 'hardware': return 'Hardware';
+      default: return 'All Products';
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -141,40 +157,9 @@ export default function CollectionsPage() {
         <div className="mb-6">
           <CategoryTabs
             selectedCategory={selectedCategory}
-            onCategoryChange={(cat) => {
-              setSelectedCategory(cat);
-              setKickMode("standard"); // Reset kick mode when changing categories
-            }}
+            onCategoryChange={setSelectedCategory}
             counts={categoryCounts}
           />
-          
-          {/* Kick Finishes Mode Toggle */}
-          {selectedCategory === "kick_finishes" && (
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => setKickMode("standard")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                  kickMode === "standard"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                Standard Metallic
-              </button>
-              <button
-                onClick={() => setKickMode("match_door")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                  kickMode === "match_door"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                Match to Door
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Suppliers Grid */}
@@ -213,11 +198,9 @@ export default function CollectionsPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">
-              {selectedCategory === "kick_finishes" && kickMode === "match_door"
-                ? "Door Panels (use as kick)"
-                : selectedSupplierData
+              {selectedSupplierData
                 ? `${selectedSupplierData.name} Products`
-                : "All Products"}
+                : getCategoryLabel()}
               {filteredItems.length > 0 && (
                 <span className="text-muted-foreground font-normal ml-2">
                   ({filteredItems.length})

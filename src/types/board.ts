@@ -32,6 +32,9 @@ export interface Category {
   created_at: string;
 }
 
+export type ProductType = 'board' | 'laminate' | 'compact_laminate' | 'solid_surface' | 'veneer' | 'hardware' | 'metallic';
+export type UsageType = 'doors' | 'panels' | 'kicks' | 'bench_tops' | 'carcass' | 'splashbacks';
+
 export interface CatalogItem {
   id: string;
   category_id: string | null;
@@ -54,6 +57,9 @@ export interface CatalogItem {
   last_synced_at: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  product_type: ProductType | null;
+  thickness: string | null;
+  usage_types: UsageType[];
   category?: Category;
   supplier?: Supplier;
   range?: ProductRange;

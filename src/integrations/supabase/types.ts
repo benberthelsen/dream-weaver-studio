@@ -65,11 +65,14 @@ export type Database = {
           metadata: Json | null
           name: string
           price: number | null
+          product_type: string | null
           range_id: string | null
           sku: string | null
           source_url: string | null
           supplier_id: string | null
+          thickness: string | null
           thumbnail_url: string | null
+          usage_types: string[] | null
         }
         Insert: {
           brand?: string | null
@@ -88,11 +91,14 @@ export type Database = {
           metadata?: Json | null
           name: string
           price?: number | null
+          product_type?: string | null
           range_id?: string | null
           sku?: string | null
           source_url?: string | null
           supplier_id?: string | null
+          thickness?: string | null
           thumbnail_url?: string | null
+          usage_types?: string[] | null
         }
         Update: {
           brand?: string | null
@@ -111,11 +117,14 @@ export type Database = {
           metadata?: Json | null
           name?: string
           price?: number | null
+          product_type?: string | null
           range_id?: string | null
           sku?: string | null
           source_url?: string | null
           supplier_id?: string | null
+          thickness?: string | null
           thumbnail_url?: string | null
+          usage_types?: string[] | null
         }
         Relationships: [
           {
