@@ -30,7 +30,6 @@ async function fetchWithRetry(
     try {
       const response = await fetch(url, options);
       
-      // If we get a 5xx error, it might be transient - retry
       if (response.status >= 500 && attempt < maxRetries - 1) {
         const data = await response.json().catch(() => ({}));
         console.log(`Attempt ${attempt + 1} failed with 5xx, retrying...`, data);
@@ -56,7 +55,6 @@ async function fetchWithRetry(
 function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
-  // Pattern 1: Look for product images with alt text
   const imgPatterns = [
     /<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
     /<img[^>]+alt=["']([^"']+)["'][^>]*src=["']([^"']+)["']/gi,
@@ -68,13 +66,11 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
       let imageUrl = pattern === imgPatterns[0] ? match[1] : match[2];
       let altText = pattern === imgPatterns[0] ? match[2] : match[1];
       
-      // Skip small images, icons, logos
       if (!imageUrl || !altText) continue;
       if (imageUrl.includes('logo') || imageUrl.includes('icon') || imageUrl.includes('sprite')) continue;
       if (imageUrl.includes('.svg') || imageUrl.includes('data:image')) continue;
       if (altText.length < 3) continue;
       
-      // Check if it looks like a product image
       const isProduct = 
         imageUrl.includes('product') || 
         imageUrl.includes('colour') ||
@@ -84,7 +80,7 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
         imageUrl.includes('laminate') ||
         imageUrl.includes('timber') ||
         imageUrl.includes('veneer') ||
-        /\d{3,}/.test(imageUrl) || // Has product codes
+        /\d{3,}/.test(imageUrl) ||
         altText.toLowerCase().includes('oak') ||
         altText.toLowerCase().includes('walnut') ||
         altText.toLowerCase().includes('white') ||
@@ -93,7 +89,6 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
         
       if (!isProduct) continue;
       
-      // Normalize image URL
       if (!imageUrl.startsWith('http')) {
         if (imageUrl.startsWith('//')) {
           imageUrl = 'https:' + imageUrl;
@@ -104,7 +99,6 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
         }
       }
       
-      // Extract color from alt text or filename
       let color = altText;
       const hexMatch = html.match(new RegExp(`${altText}[^#]*#([0-9a-fA-F]{6})`));
       
@@ -113,36 +107,6 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
         image_url: imageUrl,
         color: color,
         hex_color: hexMatch ? `#${hexMatch[1]}` : undefined,
-        source_url: pageUrl,
-      });
-    }
-  }
-  
-  // Pattern 2: Look for product cards/divs with data attributes
-  const cardPatterns = [
-    /data-product-name=["']([^"']+)["'][^>]*data-image=["']([^"']+)["']/gi,
-    /class=["'][^"']*product[^"']*["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][\s\S]*?<[^>]*>([^<]+)</gi,
-  ];
-  
-  for (const pattern of cardPatterns) {
-    const matches = html.matchAll(pattern);
-    for (const match of matches) {
-      const name = match[2]?.trim() || match[1]?.trim();
-      let imageUrl = match[1]?.includes('.') ? match[1] : match[2];
-      
-      if (!name || !imageUrl || name.length < 3) continue;
-      
-      if (!imageUrl.startsWith('http')) {
-        if (imageUrl.startsWith('//')) {
-          imageUrl = 'https:' + imageUrl;
-        } else if (imageUrl.startsWith('/')) {
-          imageUrl = baseUrl + imageUrl;
-        }
-      }
-      
-      products.push({
-        name: name,
-        image_url: imageUrl,
         source_url: pageUrl,
       });
     }
@@ -168,7 +132,6 @@ function filterProductUrls(urls: string[], baseUrl: string): string[] {
   return urls.filter(url => {
     const lowerUrl = url.toLowerCase();
     
-    // Must be from same domain
     try {
       const urlObj = new URL(url);
       const baseObj = new URL(baseUrl);
@@ -177,13 +140,8 @@ function filterProductUrls(urls: string[], baseUrl: string): string[] {
       return false;
     }
     
-    // Exclude non-product pages
     if (excludeKeywords.some(kw => lowerUrl.includes(kw))) return false;
-    
-    // Include if has product keywords
     if (productKeywords.some(kw => lowerUrl.includes(kw))) return true;
-    
-    // Include pages that look like they have product codes
     if (/\/[a-z]{2,3}\d{3,}/.test(lowerUrl)) return true;
     
     return false;
@@ -194,6 +152,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  
+  let jobId: string | null = null;
 
   try {
     const { supplierId, url, options } = await req.json();
@@ -213,10 +177,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     // Get supplier info
     const { data: supplier, error: supplierError } = await supabase
       .from('suppliers')
@@ -231,6 +191,32 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Create scrape job for progress tracking
+    const { data: job, error: jobError } = await supabase
+      .from('scrape_jobs')
+      .insert({
+        supplier_id: supplierId,
+        status: 'mapping',
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      console.error('Failed to create job:', jobError);
+    } else {
+      jobId = job.id;
+    }
+
+    // Helper to update job progress
+    const updateJob = async (updates: Record<string, any>) => {
+      if (!jobId) return;
+      await supabase
+        .from('scrape_jobs')
+        .update(updates)
+        .eq('id', jobId);
+    };
+
     // Parse base URL
     let baseUrl: string;
     try {
@@ -242,8 +228,10 @@ Deno.serve(async (req) => {
 
     console.log(`Starting full catalog scrape for ${supplier.name} from ${url}`);
 
-    // Step 1: Map the entire website to find all URLs
+    // Step 1: Map the entire website
     console.log('Step 1: Mapping website...');
+    await updateJob({ status: 'mapping', current_url: url });
+    
     let allUrls: string[] = [];
     
     try {
@@ -265,35 +253,48 @@ Deno.serve(async (req) => {
       if (mapResponse.ok && mapData.links) {
         allUrls = mapData.links;
         console.log(`Found ${allUrls.length} total URLs on website`);
+        await updateJob({ urls_mapped: allUrls.length });
       } else {
         console.error('Map failed:', mapData);
-        // Continue with just the provided URL
         allUrls = [url];
+        await updateJob({ urls_mapped: 1 });
       }
     } catch (error) {
       console.error('Map request failed:', error);
       allUrls = [url];
+      await updateJob({ urls_mapped: 1 });
     }
 
     // Step 2: Filter to product-related URLs
     const productUrls = filterProductUrls(allUrls, baseUrl);
     console.log(`Filtered to ${productUrls.length} product-related URLs`);
     
-    // Limit how many pages to scrape
     const maxPages = options?.maxPages || 20;
     const urlsToScrape = productUrls.slice(0, maxPages);
-    console.log(`Will scrape ${urlsToScrape.length} pages`);
+    
+    await updateJob({ 
+      status: 'scraping', 
+      urls_to_scrape: urlsToScrape.length,
+      urls_mapped: allUrls.length
+    });
 
     // Step 3: Scrape each product page
     const allProducts: ScrapedProduct[] = [];
     const scrapedUrls: string[] = [];
     const failedUrls: string[] = [];
     
-    for (const pageUrl of urlsToScrape) {
-      console.log(`Scraping: ${pageUrl}`);
+    for (let i = 0; i < urlsToScrape.length; i++) {
+      const pageUrl = urlsToScrape[i];
+      console.log(`Scraping (${i + 1}/${urlsToScrape.length}): ${pageUrl}`);
+      
+      await updateJob({
+        current_url: pageUrl,
+        pages_scraped: scrapedUrls.length,
+        pages_failed: failedUrls.length,
+        products_found: allProducts.length,
+      });
       
       try {
-        // Add delay between requests to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 500));
         
         const scrapeResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
@@ -305,9 +306,9 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             url: pageUrl,
             formats: ['html'],
-            onlyMainContent: false, // Get full page for better product extraction
+            onlyMainContent: false,
           }),
-        }, 2, 3000); // Fewer retries, longer delay
+        }, 2, 3000);
 
         const scrapeData = await scrapeResponse.json();
         
@@ -326,9 +327,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Total products extracted: ${allProducts.length}`);
+    await updateJob({
+      status: 'inserting',
+      pages_scraped: scrapedUrls.length,
+      pages_failed: failedUrls.length,
+      products_found: allProducts.length,
+      current_url: null,
+    });
 
-    // Step 4: Deduplicate products by name+image
+    // Step 4: Deduplicate products
     const seenProducts = new Set<string>();
     const uniqueProducts = allProducts.filter(p => {
       const key = `${p.name.toLowerCase()}|${p.image_url}`;
@@ -365,9 +372,11 @@ Deno.serve(async (req) => {
 
         if (!error && data) {
           insertedProducts.push(data);
-        } else if (error) {
-          // Might be duplicate, try upsert based on name+supplier
-          console.log(`Insert failed for ${product.name}: ${error.message}`);
+          
+          // Update progress every 10 inserts
+          if (insertedProducts.length % 10 === 0) {
+            await updateJob({ products_inserted: insertedProducts.length });
+          }
         }
       } catch (err) {
         console.error(`Failed to insert ${product.name}:`, err);
@@ -376,9 +385,21 @@ Deno.serve(async (req) => {
 
     console.log(`Inserted ${insertedProducts.length} products into catalog`);
 
+    // Mark job as complete
+    await updateJob({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      pages_scraped: scrapedUrls.length,
+      pages_failed: failedUrls.length,
+      products_found: uniqueProducts.length,
+      products_inserted: insertedProducts.length,
+      current_url: null,
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
+        jobId,
         supplier: supplier.name,
         stats: {
           urlsMapped: allUrls.length,
@@ -399,8 +420,21 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in catalog scrape:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Mark job as failed
+    if (jobId) {
+      await supabase
+        .from('scrape_jobs')
+        .update({
+          status: 'failed',
+          error_message: errorMessage,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', jobId);
+    }
+    
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: errorMessage, jobId }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
