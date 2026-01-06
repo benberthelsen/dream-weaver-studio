@@ -20,7 +20,7 @@ const iconMap: Record<string, React.ReactNode> = {
 export function CatalogPanel({ onAddItem }: CatalogPanelProps) {
   const { data: categories, isLoading: categoriesLoading } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
-  const { data: items, isLoading: itemsLoading } = useCatalogItems(selectedCategory);
+  const { data: items, isLoading: itemsLoading } = useCatalogItems({ categoryId: selectedCategory });
 
   if (categoriesLoading) {
     return (

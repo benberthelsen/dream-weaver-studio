@@ -1,1 +1,13 @@
 project_id = "uiyntlbjlaopwzoxuqup"
+
+[functions.generate-flatlay]
+verify_jwt = false
+
+[functions.firecrawl-scrape]
+verify_jwt = false
+
+[functions.firecrawl-map]
+verify_jwt = false
+
+[functions.scrape-supplier-catalog]
+verify_jwt = false
