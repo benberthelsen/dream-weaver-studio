@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { useSuppliers, useScrapeSupplierCatalog } from "@/hooks/useSuppliers";
+import { 
+  useSuppliersWithCounts, 
+  useScrapeSupplierCatalog,
+  useAddSupplier,
+  useDeleteSupplier,
+  useUpdateSupplier
+} from "@/hooks/useSuppliers";
 import { useCatalogItems } from "@/hooks/useCatalog";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -8,7 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { 
   Loader2, 
@@ -21,8 +28,11 @@ import {
   Globe,
   FileSearch,
   Database,
-  X,
-  CheckCircle2
+  Plus,
+  Trash2,
+  Edit,
+  CheckCircle2,
+  XCircle
 } from "lucide-react";
 import type { Supplier } from "@/types/board";
 
@@ -42,7 +52,13 @@ interface ScrapeJob {
   completed_at: string | null;
 }
 
+interface SupplierWithCount extends Supplier {
+  productCount: number;
+}
+
 export default function AdminPage() {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -56,32 +72,121 @@ export default function AdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <Tabs defaultValue="suppliers">
-          <TabsList>
-            <TabsTrigger value="suppliers">
-              <Building2 className="h-4 w-4 mr-2" />
-              Suppliers
-            </TabsTrigger>
-            <TabsTrigger value="products">
-              <Package className="h-4 w-4 mr-2" />
-              Products
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between mb-6">
+            <TabsList>
+              <TabsTrigger value="suppliers">
+                <Building2 className="h-4 w-4 mr-2" />
+                Suppliers
+              </TabsTrigger>
+              <TabsTrigger value="products">
+                <Package className="h-4 w-4 mr-2" />
+                Products
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="suppliers" className="mt-6">
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Supplier
+            </Button>
+          </div>
+
+          <TabsContent value="suppliers" className="mt-0">
             <SuppliersList />
           </TabsContent>
 
-          <TabsContent value="products" className="mt-6">
+          <TabsContent value="products" className="mt-0">
             <ProductsList />
           </TabsContent>
         </Tabs>
       </main>
+
+      <AddSupplierDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
     </div>
   );
 }
 
+function AddSupplierDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [name, setName] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const { mutate: addSupplier, isPending } = useAddSupplier();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error("Please enter a supplier name");
+      return;
+    }
+
+    addSupplier(
+      { name: name.trim(), website_url: websiteUrl.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast.success(`Added ${name} to suppliers`);
+          setName("");
+          setWebsiteUrl("");
+          onOpenChange(false);
+        },
+        onError: (error) => {
+          toast.error(`Failed to add supplier: ${error.message}`);
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Supplier</DialogTitle>
+          <DialogDescription>
+            Add a new brand or supplier to import products from.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Supplier Name *</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Polytec"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Website URL</label>
+            <Input
+              type="url"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              placeholder="https://www.example.com"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Supplier"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SuppliersList() {
-  const { data: suppliers, isLoading } = useSuppliers();
+  const { data: suppliers, isLoading } = useSuppliersWithCounts();
 
   if (isLoading) {
     return (
@@ -100,15 +205,31 @@ function SuppliersList() {
   );
 }
 
-function SupplierCard({ supplier }: { supplier: Supplier }) {
+function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   const [scrapeUrl, setScrapeUrl] = useState(supplier.website_url || "");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<ScrapeJob | null>(null);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
   const { mutate: scrapeCatalog, isPending } = useScrapeSupplierCatalog();
+  const { mutate: deleteSupplier, isPending: isDeleting } = useDeleteSupplier();
 
   // Subscribe to realtime updates for the active job
   useEffect(() => {
     if (!activeJobId) return;
+
+    // Fetch initial job state
+    const fetchJob = async () => {
+      const { data } = await supabase
+        .from("scrape_jobs")
+        .select("*")
+        .eq("id", activeJobId)
+        .single();
+      
+      if (data) {
+        setJobProgress(data as ScrapeJob);
+      }
+    };
+    fetchJob();
 
     const channel = supabase
       .channel(`scrape-job-${activeJobId}`)
@@ -123,13 +244,13 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
         (payload) => {
           console.log('Job update:', payload);
           if (payload.new) {
-            setJobProgress(payload.new as ScrapeJob);
+            const job = payload.new as ScrapeJob;
+            setJobProgress(job);
             
-            // Close dialog when complete
-            if ((payload.new as ScrapeJob).status === 'completed') {
-              toast.success(`Import complete! Added ${(payload.new as ScrapeJob).products_inserted} products.`);
-            } else if ((payload.new as ScrapeJob).status === 'failed') {
-              toast.error(`Import failed: ${(payload.new as ScrapeJob).error_message}`);
+            if (job.status === 'completed') {
+              toast.success(`Import complete! Added ${job.products_inserted} products.`);
+            } else if (job.status === 'failed') {
+              toast.error(`Import failed: ${job.error_message}`);
             }
           }
         }
@@ -147,47 +268,53 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
       return;
     }
 
+    setShowProgressDialog(true);
+
     scrapeCatalog(
-      { supplierId: supplier.id, url: scrapeUrl },
+      { supplierId: supplier.id, url: scrapeUrl, options: { maxPages: 10 } },
       {
         onSuccess: (data) => {
           if (data.jobId) {
             setActiveJobId(data.jobId);
-            setJobProgress({
-              id: data.jobId,
-              supplier_id: supplier.id,
-              status: 'starting',
-              urls_mapped: 0,
-              urls_to_scrape: 0,
-              pages_scraped: 0,
-              pages_failed: 0,
-              products_found: 0,
-              products_inserted: 0,
-              current_url: null,
-              error_message: null,
-              started_at: new Date().toISOString(),
-              completed_at: null,
-            });
+          } else {
+            // If no job ID returned, show results directly
+            toast.success(`Imported ${data.stats?.productsInserted || 0} products`);
+            setShowProgressDialog(false);
           }
         },
         onError: (error) => {
           toast.error(`Failed to start import: ${error.message}`);
+          setShowProgressDialog(false);
         },
       }
     );
   };
 
+  const handleDelete = () => {
+    deleteSupplier(supplier.id, {
+      onSuccess: () => {
+        toast.success(`Deleted ${supplier.name} and all its products`);
+      },
+      onError: (error) => {
+        toast.error(`Failed to delete: ${error.message}`);
+      },
+    });
+  };
+
   const closeProgressDialog = () => {
+    setShowProgressDialog(false);
     setActiveJobId(null);
     setJobProgress(null);
   };
+
+  const isJobComplete = jobProgress?.status === 'completed' || jobProgress?.status === 'failed';
 
   return (
     <>
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between">
-            <div>
+            <div className="flex-1">
               <CardTitle className="flex items-center gap-2">
                 {supplier.name}
                 {supplier.is_active ? (
@@ -196,7 +323,7 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
                   <Badge variant="secondary" className="text-xs">Inactive</Badge>
                 )}
               </CardTitle>
-              <CardDescription className="mt-1">
+              <CardDescription className="mt-1 space-y-1">
                 {supplier.website_url && (
                   <a 
                     href={supplier.website_url}
@@ -208,8 +335,33 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
+                <p className="text-sm">
+                  <span className="font-medium">{supplier.productCount}</span> products
+                </p>
               </CardDescription>
             </div>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {supplier.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete this supplier and all {supplier.productCount} associated products. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -223,7 +375,7 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
           </div>
           <Button 
             onClick={handleScrape}
-            disabled={isPending || !!activeJobId}
+            disabled={isPending}
             className="w-full"
           >
             {isPending ? (
@@ -242,82 +394,108 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
       </Card>
 
       {/* Progress Dialog */}
-      <Dialog open={!!activeJobId && !!jobProgress} onOpenChange={(open) => !open && closeProgressDialog()}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={showProgressDialog} onOpenChange={(open) => {
+        if (!open && isJobComplete) {
+          closeProgressDialog();
+        }
+      }}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => {
+          if (!isJobComplete) e.preventDefault();
+        }}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {jobProgress?.status === 'completed' ? (
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
               ) : jobProgress?.status === 'failed' ? (
-                <AlertCircle className="h-5 w-5 text-destructive" />
+                <XCircle className="h-5 w-5 text-destructive" />
               ) : (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
               )}
               Importing {supplier.name} Catalog
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            {/* Status */}
+            {/* Status Badge */}
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Status</span>
               <Badge variant={
                 jobProgress?.status === 'completed' ? 'default' :
                 jobProgress?.status === 'failed' ? 'destructive' : 'secondary'
               }>
-                {jobProgress?.status === 'mapping' && 'Discovering pages...'}
-                {jobProgress?.status === 'scraping' && 'Scraping products...'}
-                {jobProgress?.status === 'inserting' && 'Saving products...'}
-                {jobProgress?.status === 'completed' && 'Complete'}
-                {jobProgress?.status === 'failed' && 'Failed'}
-                {!['mapping', 'scraping', 'inserting', 'completed', 'failed'].includes(jobProgress?.status || '') && 'Starting...'}
+                {jobProgress?.status === 'mapping' && '🔍 Discovering pages...'}
+                {jobProgress?.status === 'scraping' && '📄 Scraping products...'}
+                {jobProgress?.status === 'inserting' && '💾 Saving products...'}
+                {jobProgress?.status === 'completed' && '✅ Complete'}
+                {jobProgress?.status === 'failed' && '❌ Failed'}
+                {jobProgress?.status === 'pending' && '⏳ Starting...'}
+                {!jobProgress && '⏳ Initializing...'}
               </Badge>
             </div>
 
             {/* Progress Steps */}
-            <div className="space-y-4">
+            <div className="space-y-5">
               {/* Step 1: Mapping */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span>Website Mapping</span>
-                  <span className="ml-auto font-mono text-muted-foreground">
-                    {jobProgress?.urls_mapped || 0} URLs found
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`p-2 rounded-full ${jobProgress?.status === 'mapping' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                    <Globe className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Website Mapping</p>
+                    <p className="text-muted-foreground text-xs">Discovering product pages</p>
+                  </div>
+                  <span className="font-mono text-sm font-medium">
+                    {jobProgress?.urls_mapped || 0}
                   </span>
                 </div>
                 {jobProgress?.status === 'mapping' && (
-                  <Progress value={undefined} className="h-1" />
+                  <div className="ml-11">
+                    <Progress value={undefined} className="h-1.5" />
+                  </div>
                 )}
               </div>
 
               {/* Step 2: Scraping */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <FileSearch className="h-4 w-4 text-muted-foreground" />
-                  <span>Scraping Pages</span>
-                  <span className="ml-auto font-mono text-muted-foreground">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`p-2 rounded-full ${jobProgress?.status === 'scraping' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                    <FileSearch className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Scraping Pages</p>
+                    <p className="text-muted-foreground text-xs">Extracting product data</p>
+                  </div>
+                  <span className="font-mono text-sm font-medium">
                     {jobProgress?.pages_scraped || 0} / {jobProgress?.urls_to_scrape || 0}
                   </span>
                 </div>
                 {(jobProgress?.urls_to_scrape || 0) > 0 && (
-                  <Progress 
-                    value={((jobProgress?.pages_scraped || 0) / (jobProgress?.urls_to_scrape || 1)) * 100} 
-                    className="h-1" 
-                  />
+                  <div className="ml-11">
+                    <Progress 
+                      value={((jobProgress?.pages_scraped || 0) / (jobProgress?.urls_to_scrape || 1)) * 100} 
+                      className="h-1.5" 
+                    />
+                  </div>
                 )}
-                {jobProgress?.current_url && (
-                  <p className="text-xs text-muted-foreground truncate">
+                {jobProgress?.current_url && jobProgress.status === 'scraping' && (
+                  <p className="ml-11 text-xs text-muted-foreground truncate max-w-[280px]">
                     {jobProgress.current_url}
                   </p>
                 )}
               </div>
 
-              {/* Step 3: Products */}
+              {/* Step 3: Products Found */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  <span>Products Found</span>
-                  <span className="ml-auto font-mono text-muted-foreground">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`p-2 rounded-full ${(jobProgress?.products_found || 0) > 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                    <Package className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Products Found</p>
+                    <p className="text-muted-foreground text-xs">Unique products discovered</p>
+                  </div>
+                  <span className="font-mono text-sm font-medium text-primary">
                     {jobProgress?.products_found || 0}
                   </span>
                 </div>
@@ -325,23 +503,30 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
 
               {/* Step 4: Inserting */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Database className="h-4 w-4 text-muted-foreground" />
-                  <span>Products Saved</span>
-                  <span className="ml-auto font-mono text-muted-foreground">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`p-2 rounded-full ${jobProgress?.status === 'inserting' || jobProgress?.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-muted text-muted-foreground'}`}>
+                    <Database className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Products Saved</p>
+                    <p className="text-muted-foreground text-xs">Added to catalog</p>
+                  </div>
+                  <span className="font-mono text-sm font-medium text-green-600">
                     {jobProgress?.products_inserted || 0}
                   </span>
                 </div>
                 {jobProgress?.status === 'inserting' && (
-                  <Progress value={undefined} className="h-1" />
+                  <div className="ml-11">
+                    <Progress value={undefined} className="h-1.5" />
+                  </div>
                 )}
               </div>
             </div>
 
             {/* Errors */}
             {(jobProgress?.pages_failed || 0) > 0 && (
-              <div className="flex items-center gap-2 text-sm text-amber-600">
-                <AlertCircle className="h-4 w-4" />
+              <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{jobProgress?.pages_failed} pages failed to scrape</span>
               </div>
             )}
@@ -353,9 +538,9 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
             )}
 
             {/* Close button when done */}
-            {(jobProgress?.status === 'completed' || jobProgress?.status === 'failed') && (
+            {isJobComplete && (
               <Button onClick={closeProgressDialog} className="w-full">
-                Close
+                {jobProgress?.status === 'completed' ? 'Done' : 'Close'}
               </Button>
             )}
           </div>
@@ -413,6 +598,9 @@ function ProductsList() {
                         src={item.thumbnail_url || item.image_url}
                         alt={item.name}
                         className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.svg';
+                        }}
                       />
                     </div>
                     <span className="font-medium">{item.name}</span>
