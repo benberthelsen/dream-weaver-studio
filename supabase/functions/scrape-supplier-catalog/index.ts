@@ -17,6 +17,21 @@ interface ScrapedProduct {
   sku?: string;
 }
 
+// Australian domain patterns
+const AUSTRALIAN_PATTERNS = [
+  '.com.au',
+  '.au/',
+  '/en-au/',
+  '/au/',
+  '/australia/',
+];
+
+// Check if URL is Australian
+function isAustralianUrl(url: string): boolean {
+  const lowerUrl = url.toLowerCase();
+  return AUSTRALIAN_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+}
+
 // Retry helper with exponential backoff
 async function fetchWithRetry(
   url: string,
@@ -51,25 +66,67 @@ async function fetchWithRetry(
   throw lastError || new Error('All retry attempts failed');
 }
 
-// Extract product info from HTML
-function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string): ScrapedProduct[] {
+// Extract product info from HTML - enhanced for Australian suppliers
+function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string, supplierSlug?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
+  // Enhanced patterns for different supplier formats
   const imgPatterns = [
+    // Standard img with alt
     /<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
     /<img[^>]+alt=["']([^"']+)["'][^>]*src=["']([^"']+)["']/gi,
+    // Data-src for lazy loading
+    /<img[^>]+data-src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    // Background image patterns
+    /style=["'][^"']*background-image:\s*url\(['"]?([^'")\s]+)['"]?\)[^"']*["'][^>]*data-name=["']([^"']+)["']/gi,
   ];
   
+  // Cosentino-specific patterns (Dekton, Silestone)
+  if (supplierSlug === 'dekton' || supplierSlug === 'silestone') {
+    const colourCards = html.matchAll(/<div[^>]*class="[^"]*colour[^"]*"[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi);
+    for (const match of colourCards) {
+      if (match[1] && match[2]) {
+        products.push({
+          name: match[2].trim(),
+          image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+          color: match[2].trim(),
+          source_url: pageUrl,
+        });
+      }
+    }
+  }
+  
+  // Polytec/Laminex pattern - colour swatches
+  if (supplierSlug === 'polytec' || supplierSlug === 'laminex' || supplierSlug === 'nikpol') {
+    const swatchPattern = /<div[^>]*class="[^"]*(?:swatch|colour|decor|product)[^"]*"[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?(?:<span|<p|<h)[^>]*>([^<]+)</gi;
+    const swatches = html.matchAll(swatchPattern);
+    for (const match of swatches) {
+      if (match[1] && match[2] && match[2].trim().length > 2) {
+        products.push({
+          name: match[2].trim(),
+          image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+          color: match[2].trim(),
+          source_url: pageUrl,
+        });
+      }
+    }
+  }
+  
+  // Standard image extraction
   for (const pattern of imgPatterns) {
     const matches = html.matchAll(pattern);
     for (const match of matches) {
-      let imageUrl = pattern === imgPatterns[0] ? match[1] : match[2];
-      let altText = pattern === imgPatterns[0] ? match[2] : match[1];
+      let imageUrl = pattern === imgPatterns[0] || pattern === imgPatterns[2] ? match[1] : match[2];
+      let altText = pattern === imgPatterns[0] || pattern === imgPatterns[2] ? match[2] : match[1];
       
       if (!imageUrl || !altText) continue;
       if (imageUrl.includes('logo') || imageUrl.includes('icon') || imageUrl.includes('sprite')) continue;
       if (imageUrl.includes('.svg') || imageUrl.includes('data:image')) continue;
-      if (altText.length < 3) continue;
+      if (altText.length < 3 || altText.length > 100) continue;
+      
+      // Skip non-product alt text
+      const skipWords = ['menu', 'navigation', 'banner', 'hero', 'slider', 'button', 'close', 'search', 'arrow'];
+      if (skipWords.some(word => altText.toLowerCase().includes(word))) continue;
       
       const isProduct = 
         imageUrl.includes('product') || 
@@ -80,12 +137,17 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
         imageUrl.includes('laminate') ||
         imageUrl.includes('timber') ||
         imageUrl.includes('veneer') ||
+        imageUrl.includes('stone') ||
+        imageUrl.includes('surface') ||
         /\d{3,}/.test(imageUrl) ||
+        /[A-Z]{2,}\d{3,}/.test(altText) || // SKU pattern
         altText.toLowerCase().includes('oak') ||
         altText.toLowerCase().includes('walnut') ||
         altText.toLowerCase().includes('white') ||
         altText.toLowerCase().includes('grey') ||
-        altText.toLowerCase().includes('gray');
+        altText.toLowerCase().includes('gray') ||
+        altText.toLowerCase().includes('marble') ||
+        altText.toLowerCase().includes('concrete');
         
       if (!isProduct) continue;
       
@@ -102,11 +164,22 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
       let color = altText;
       const hexMatch = html.match(new RegExp(`${altText}[^#]*#([0-9a-fA-F]{6})`));
       
+      // Extract finish type from name
+      let finishType: string | undefined;
+      const finishPatterns = ['matt', 'matte', 'gloss', 'satin', 'textured', 'natural', 'polished', 'honed'];
+      for (const finish of finishPatterns) {
+        if (altText.toLowerCase().includes(finish)) {
+          finishType = finish.charAt(0).toUpperCase() + finish.slice(1);
+          break;
+        }
+      }
+      
       products.push({
         name: altText.trim(),
         image_url: imageUrl,
         color: color,
         hex_color: hexMatch ? `#${hexMatch[1]}` : undefined,
+        finish_type: finishType,
         source_url: pageUrl,
       });
     }
@@ -115,27 +188,41 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string)
   return products;
 }
 
-// Filter URLs to find product pages
-function filterProductUrls(urls: string[], baseUrl: string): string[] {
+// Filter URLs to find product pages - enhanced for AU sites
+function filterProductUrls(urls: string[], baseUrl: string, requireAustralian: boolean = true): string[] {
   const productKeywords = [
-    'product', 'colour', 'color', 'decor', 'range', 'collection',
+    'product', 'colour', 'color', 'colours', 'colors', 'decor', 'range', 'collection',
     'laminate', 'veneer', 'timber', 'stone', 'surface', 'finish',
-    'swatch', 'sample', 'melamine', 'compact', 'acrylic'
+    'swatch', 'sample', 'melamine', 'compact', 'acrylic', 'benchtop',
+    'door', 'panel', 'board', 'woodgrain', 'solid-colour', 'metallic'
   ];
   
   const excludeKeywords = [
     'blog', 'news', 'contact', 'about', 'login', 'cart', 'checkout',
     'privacy', 'terms', 'faq', 'help', 'support', 'career', 'job',
-    'pdf', 'download', 'document', 'warranty', 'sustainability'
+    'pdf', 'download', 'document', 'warranty', 'sustainability',
+    'video', 'instagram', 'facebook', 'twitter', 'linkedin', 'youtube',
+    'subscribe', 'newsletter', 'sitemap', 'search', 'account'
   ];
   
   return urls.filter(url => {
     const lowerUrl = url.toLowerCase();
     
+    // Check Australian requirement
+    if (requireAustralian && !isAustralianUrl(url)) {
+      // Allow if base URL is already Australian
+      if (!isAustralianUrl(baseUrl)) {
+        return false;
+      }
+    }
+    
     try {
       const urlObj = new URL(url);
       const baseObj = new URL(baseUrl);
-      if (urlObj.hostname !== baseObj.hostname) return false;
+      // Allow same domain or subdomains
+      if (!urlObj.hostname.endsWith(baseObj.hostname.replace('www.', ''))) {
+        return false;
+      }
     } catch {
       return false;
     }
@@ -226,7 +313,9 @@ Deno.serve(async (req) => {
       baseUrl = url;
     }
 
-    console.log(`Starting full catalog scrape for ${supplier.name} from ${url}`);
+    // Check if base URL is Australian
+    const isAustraliaSite = isAustralianUrl(url);
+    console.log(`Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite})`);
 
     // Step 1: Map the entire website
     console.log('Step 1: Mapping website...');
@@ -243,7 +332,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           url: url,
-          limit: options?.mapLimit || 1000,
+          limit: options?.mapLimit || 2000,
           includeSubdomains: false,
         }),
       });
@@ -265,11 +354,12 @@ Deno.serve(async (req) => {
       await updateJob({ urls_mapped: 1 });
     }
 
-    // Step 2: Filter to product-related URLs
-    const productUrls = filterProductUrls(allUrls, baseUrl);
-    console.log(`Filtered to ${productUrls.length} product-related URLs`);
+    // Step 2: Filter to product-related URLs (Australian only if base isn't AU)
+    const requireAustralian = !isAustraliaSite;
+    const productUrls = filterProductUrls(allUrls, baseUrl, requireAustralian);
+    console.log(`Filtered to ${productUrls.length} product-related URLs (AU filter: ${requireAustralian})`);
     
-    const maxPages = options?.maxPages || 20;
+    const maxPages = options?.maxPages || 30;
     const urlsToScrape = productUrls.slice(0, maxPages);
     
     await updateJob({ 
@@ -313,7 +403,7 @@ Deno.serve(async (req) => {
         const scrapeData = await scrapeResponse.json();
         
         if (scrapeResponse.ok && scrapeData.data?.html) {
-          const products = extractProductsFromHtml(scrapeData.data.html, pageUrl, baseUrl);
+          const products = extractProductsFromHtml(scrapeData.data.html, pageUrl, baseUrl, supplier.slug);
           console.log(`  Found ${products.length} products on ${pageUrl}`);
           allProducts.push(...products);
           scrapedUrls.push(pageUrl);
@@ -335,10 +425,10 @@ Deno.serve(async (req) => {
       current_url: null,
     });
 
-    // Step 4: Deduplicate products
+    // Step 4: Deduplicate products by name (case-insensitive)
     const seenProducts = new Set<string>();
     const uniqueProducts = allProducts.filter(p => {
-      const key = `${p.name.toLowerCase()}|${p.image_url}`;
+      const key = p.name.toLowerCase().trim();
       if (seenProducts.has(key)) return false;
       seenProducts.add(key);
       return true;
@@ -346,9 +436,9 @@ Deno.serve(async (req) => {
     
     console.log(`Unique products after dedup: ${uniqueProducts.length}`);
 
-    // Step 5: Upsert products into catalog_items (prevents duplicates by name)
+    // Step 5: Upsert products into catalog_items (prevents duplicates by name per supplier)
     const insertedProducts: any[] = [];
-    const insertLimit = options?.insertLimit || 200;
+    const insertLimit = options?.insertLimit || 300;
     
     for (const product of uniqueProducts.slice(0, insertLimit)) {
       try {
@@ -404,6 +494,7 @@ Deno.serve(async (req) => {
         success: true,
         jobId,
         supplier: supplier.name,
+        isAustralianSite: isAustraliaSite,
         stats: {
           urlsMapped: allUrls.length,
           productUrlsFound: productUrls.length,
