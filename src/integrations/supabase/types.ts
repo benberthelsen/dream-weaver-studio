@@ -201,6 +201,35 @@ export type Database = {
         }
         Relationships: []
       }
+      liked_items: {
+        Row: {
+          catalog_item_id: string
+          created_at: string | null
+          id: string
+          session_id: string
+        }
+        Insert: {
+          catalog_item_id: string
+          created_at?: string | null
+          id?: string
+          session_id: string
+        }
+        Update: {
+          catalog_item_id?: string
+          created_at?: string | null
+          id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liked_items_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_ranges: {
         Row: {
           created_at: string
@@ -339,6 +368,7 @@ export type Database = {
       }
       suppliers: {
         Row: {
+          category: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -349,6 +379,7 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          category?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -359,6 +390,7 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          category?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
