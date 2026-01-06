@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
     
     console.log(`Unique products after dedup: ${uniqueProducts.length}`);
 
-    // Step 5: Insert products into catalog_items
+    // Step 5: Upsert products into catalog_items (prevents duplicates)
     const insertedProducts: any[] = [];
     const insertLimit = options?.insertLimit || 200;
     
@@ -354,7 +354,7 @@ Deno.serve(async (req) => {
       try {
         const { data, error } = await supabase
           .from('catalog_items')
-          .insert({
+          .upsert({
             supplier_id: supplierId,
             name: product.name,
             image_url: product.image_url,
@@ -366,6 +366,9 @@ Deno.serve(async (req) => {
             sku: product.sku,
             is_active: true,
             last_synced_at: new Date().toISOString(),
+          }, {
+            onConflict: 'supplier_id,name,image_url',
+            ignoreDuplicates: false,
           })
           .select()
           .single();
