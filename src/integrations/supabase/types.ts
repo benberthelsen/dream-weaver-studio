@@ -54,12 +54,21 @@ export type Database = {
           color: string | null
           created_at: string
           description: string | null
+          dimensions: string | null
+          finish_type: string | null
+          hex_color: string | null
           id: string
           image_url: string
+          is_active: boolean
+          last_synced_at: string | null
           material: string | null
           metadata: Json | null
           name: string
           price: number | null
+          range_id: string | null
+          sku: string | null
+          source_url: string | null
+          supplier_id: string | null
           thumbnail_url: string | null
         }
         Insert: {
@@ -68,12 +77,21 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          dimensions?: string | null
+          finish_type?: string | null
+          hex_color?: string | null
           id?: string
           image_url: string
+          is_active?: boolean
+          last_synced_at?: string | null
           material?: string | null
           metadata?: Json | null
           name: string
           price?: number | null
+          range_id?: string | null
+          sku?: string | null
+          source_url?: string | null
+          supplier_id?: string | null
           thumbnail_url?: string | null
         }
         Update: {
@@ -82,12 +100,21 @@ export type Database = {
           color?: string | null
           created_at?: string
           description?: string | null
+          dimensions?: string | null
+          finish_type?: string | null
+          hex_color?: string | null
           id?: string
           image_url?: string
+          is_active?: boolean
+          last_synced_at?: string | null
           material?: string | null
           metadata?: Json | null
           name?: string
           price?: number | null
+          range_id?: string | null
+          sku?: string | null
+          source_url?: string | null
+          supplier_id?: string | null
           thumbnail_url?: string | null
         }
         Relationships: [
@@ -96,6 +123,20 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_items_range_id_fkey"
+            columns: ["range_id"]
+            isOneToOne: false
+            referencedRelation: "product_ranges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_items_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -124,6 +165,149 @@ export type Database = {
           id?: string
           name?: string
           slug?: string
+        }
+        Relationships: []
+      }
+      inspiration_gallery: {
+        Row: {
+          color_palette: string[] | null
+          created_at: string
+          description: string | null
+          featured: boolean
+          id: string
+          image_url: string
+          style_tags: string[] | null
+          title: string
+        }
+        Insert: {
+          color_palette?: string[] | null
+          created_at?: string
+          description?: string | null
+          featured?: boolean
+          id?: string
+          image_url: string
+          style_tags?: string[] | null
+          title: string
+        }
+        Update: {
+          color_palette?: string[] | null
+          created_at?: string
+          description?: string | null
+          featured?: boolean
+          id?: string
+          image_url?: string
+          style_tags?: string[] | null
+          title?: string
+        }
+        Relationships: []
+      }
+      product_ranges: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          name: string
+          slug: string
+          supplier_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+          slug: string
+          supplier_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          slug?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_ranges_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_boards: {
+        Row: {
+          background: string | null
+          canvas_data: Json
+          created_at: string
+          description: string | null
+          id: string
+          is_public: boolean
+          name: string
+          preview_image_url: string | null
+          style: string | null
+          updated_at: string
+        }
+        Insert: {
+          background?: string | null
+          canvas_data?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name?: string
+          preview_image_url?: string | null
+          style?: string | null
+          updated_at?: string
+        }
+        Update: {
+          background?: string | null
+          canvas_data?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name?: string
+          preview_image_url?: string | null
+          style?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          scrape_config: Json | null
+          slug: string
+          website_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name: string
+          scrape_config?: Json | null
+          slug: string
+          website_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          scrape_config?: Json | null
+          slug?: string
+          website_url?: string | null
         }
         Relationships: []
       }

@@ -7,9 +7,9 @@ import { BoardCanvas } from "@/components/board/BoardCanvas";
 import { ControlPanel } from "@/components/board/ControlPanel";
 import { GalleryShowroom } from "@/components/board/GalleryShowroom";
 
-const Index = () => {
+const BoardPage = () => {
   const [showroomOpen, setShowroomOpen] = useState(false);
-  const { data: allItems } = useCatalogItems();
+  const { data: allItems } = useCatalogItems({});
   
   const {
     items,
@@ -84,4 +84,4 @@ const Index = () => {
   );
 };
 
-export default Index;
+export default BoardPage;
