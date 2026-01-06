@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Layers, Square, Footprints } from "lucide-react";
+import { Layers, Square, Footprints, GripVertical } from "lucide-react";
 
-export type SupplierCategory = "all" | "bench_tops" | "doors_panels" | "kick_finishes";
+export type SupplierCategory = "all" | "bench_tops" | "doors_panels" | "kick_finishes" | "hardware";
 
 interface CategoryTabsProps {
   selectedCategory: SupplierCategory;
@@ -11,6 +11,7 @@ interface CategoryTabsProps {
     bench_tops: number;
     doors_panels: number;
     kick_finishes: number;
+    hardware: number;
   };
 }
 
@@ -19,6 +20,7 @@ const categories: { id: SupplierCategory; label: string; icon: typeof Layers }[]
   { id: "bench_tops", label: "Bench Tops", icon: Square },
   { id: "doors_panels", label: "Doors & Panels", icon: Layers },
   { id: "kick_finishes", label: "Kick Finishes", icon: Footprints },
+  { id: "hardware", label: "Hardware", icon: GripVertical },
 ];
 
 export function CategoryTabs({ selectedCategory, onCategoryChange, counts }: CategoryTabsProps) {

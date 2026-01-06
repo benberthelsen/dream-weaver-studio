@@ -1,4 +1,4 @@
-export type SupplierCategory = 'bench_tops' | 'doors_panels' | 'kick_finishes';
+export type SupplierCategory = 'bench_tops' | 'doors_panels' | 'kick_finishes' | 'hardware';
 
 export interface Supplier {
   id: string;
