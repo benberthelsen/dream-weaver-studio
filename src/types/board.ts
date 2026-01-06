@@ -1,3 +1,5 @@
+export type SupplierCategory = 'bench_tops' | 'doors_panels' | 'kick_finishes';
+
 export interface Supplier {
   id: string;
   name: string;
@@ -6,6 +8,7 @@ export interface Supplier {
   website_url: string | null;
   scrape_config: Record<string, unknown>;
   is_active: boolean;
+  category: SupplierCategory | null;
   created_at: string;
 }
 
