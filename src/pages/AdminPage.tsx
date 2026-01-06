@@ -58,6 +58,7 @@ interface SupplierWithCount extends Supplier {
 
 export default function AdminPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -84,10 +85,16 @@ export default function AdminPage() {
               </TabsTrigger>
             </TabsList>
 
-            <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Supplier
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setShowBulkImportDialog(true)}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Re-import All
+              </Button>
+              <Button onClick={() => setShowAddDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Supplier
+              </Button>
+            </div>
           </div>
 
           <TabsContent value="suppliers" className="mt-0">
@@ -101,6 +108,7 @@ export default function AdminPage() {
       </main>
 
       <AddSupplierDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
+      <BulkImportDialog open={showBulkImportDialog} onOpenChange={setShowBulkImportDialog} />
     </div>
   );
 }
@@ -180,6 +188,304 @@ function AddSupplierDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface BulkImportState {
+  isRunning: boolean;
+  currentSupplierIndex: number;
+  totalSuppliers: number;
+  currentSupplierName: string;
+  completedSuppliers: { name: string; products: number; success: boolean }[];
+  currentJob: ScrapeJob | null;
+}
+
+function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { data: suppliers } = useSuppliersWithCounts();
+  const [state, setState] = useState<BulkImportState>({
+    isRunning: false,
+    currentSupplierIndex: 0,
+    totalSuppliers: 0,
+    currentSupplierName: '',
+    completedSuppliers: [],
+    currentJob: null,
+  });
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  // Subscribe to job updates
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    const fetchJob = async () => {
+      const { data } = await supabase
+        .from("scrape_jobs")
+        .select("*")
+        .eq("id", activeJobId)
+        .single();
+      
+      if (data) {
+        setState(prev => ({ ...prev, currentJob: data as ScrapeJob }));
+      }
+    };
+    fetchJob();
+
+    const channel = supabase
+      .channel(`bulk-scrape-job-${activeJobId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scrape_jobs',
+          filter: `id=eq.${activeJobId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setState(prev => ({ ...prev, currentJob: payload.new as ScrapeJob }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeJobId]);
+
+  // Process next supplier when current job completes
+  useEffect(() => {
+    if (!state.isRunning || !state.currentJob) return;
+
+    if (state.currentJob.status === 'completed' || state.currentJob.status === 'failed') {
+      // Record result
+      const result = {
+        name: state.currentSupplierName,
+        products: state.currentJob.products_inserted || 0,
+        success: state.currentJob.status === 'completed',
+      };
+
+      setState(prev => ({
+        ...prev,
+        completedSuppliers: [...prev.completedSuppliers, result],
+        currentJob: null,
+      }));
+
+      setActiveJobId(null);
+
+      // Process next supplier after a short delay
+      setTimeout(() => {
+        processNextSupplier();
+      }, 1000);
+    }
+  }, [state.currentJob?.status]);
+
+  const suppliersWithUrls = suppliers?.filter(s => s.website_url) || [];
+
+  const processNextSupplier = async () => {
+    const nextIndex = state.completedSuppliers.length;
+    
+    if (nextIndex >= suppliersWithUrls.length) {
+      // All done
+      setState(prev => ({ ...prev, isRunning: false }));
+      toast.success(`Bulk import complete! Processed ${suppliersWithUrls.length} suppliers.`);
+      return;
+    }
+
+    const supplier = suppliersWithUrls[nextIndex];
+    
+    setState(prev => ({
+      ...prev,
+      currentSupplierIndex: nextIndex,
+      currentSupplierName: supplier.name,
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+        body: { 
+          supplierId: supplier.id, 
+          url: supplier.website_url,
+          options: { maxPages: 30 }
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.jobId) {
+        setActiveJobId(data.jobId);
+      } else {
+        // No job ID, record as complete
+        setState(prev => ({
+          ...prev,
+          completedSuppliers: [...prev.completedSuppliers, {
+            name: supplier.name,
+            products: data.stats?.productsInserted || 0,
+            success: true,
+          }],
+        }));
+        setTimeout(() => processNextSupplier(), 500);
+      }
+    } catch (error) {
+      console.error(`Failed to scrape ${supplier.name}:`, error);
+      setState(prev => ({
+        ...prev,
+        completedSuppliers: [...prev.completedSuppliers, {
+          name: supplier.name,
+          products: 0,
+          success: false,
+        }],
+      }));
+      setTimeout(() => processNextSupplier(), 500);
+    }
+  };
+
+  const startBulkImport = () => {
+    setState({
+      isRunning: true,
+      currentSupplierIndex: 0,
+      totalSuppliers: suppliersWithUrls.length,
+      currentSupplierName: '',
+      completedSuppliers: [],
+      currentJob: null,
+    });
+    processNextSupplier();
+  };
+
+  const handleClose = () => {
+    if (!state.isRunning) {
+      setState({
+        isRunning: false,
+        currentSupplierIndex: 0,
+        totalSuppliers: 0,
+        currentSupplierName: '',
+        completedSuppliers: [],
+        currentJob: null,
+      });
+      onOpenChange(false);
+    }
+  };
+
+  const overallProgress = suppliersWithUrls.length > 0 
+    ? (state.completedSuppliers.length / suppliersWithUrls.length) * 100 
+    : 0;
+
+  const isComplete = state.completedSuppliers.length === suppliersWithUrls.length && !state.isRunning;
+  const totalProducts = state.completedSuppliers.reduce((sum, s) => sum + s.products, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-lg" onPointerDownOutside={(e) => {
+        if (state.isRunning) e.preventDefault();
+      }}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {state.isRunning ? (
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            ) : isComplete ? (
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            ) : (
+              <RefreshCw className="h-5 w-5" />
+            )}
+            Bulk Catalog Import
+          </DialogTitle>
+          <DialogDescription>
+            {state.isRunning 
+              ? `Importing catalogs from all ${suppliersWithUrls.length} suppliers with website URLs.`
+              : isComplete
+              ? `Successfully imported ${totalProducts} products from ${state.completedSuppliers.filter(s => s.success).length} suppliers.`
+              : `This will re-import catalogs from all ${suppliersWithUrls.length} suppliers with website URLs configured.`
+            }
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Overall Progress */}
+          {(state.isRunning || isComplete) && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Overall Progress</span>
+                <span className="font-medium">
+                  {state.completedSuppliers.length} / {suppliersWithUrls.length} suppliers
+                </span>
+              </div>
+              <Progress value={overallProgress} className="h-2" />
+            </div>
+          )}
+
+          {/* Current Supplier */}
+          {state.isRunning && state.currentSupplierName && (
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium">{state.currentSupplierName}</span>
+                  <Badge variant="secondary">
+                    {state.currentJob?.status === 'mapping' && '🔍 Mapping...'}
+                    {state.currentJob?.status === 'scraping' && '📄 Scraping...'}
+                    {state.currentJob?.status === 'inserting' && '💾 Saving...'}
+                    {!state.currentJob && '⏳ Starting...'}
+                  </Badge>
+                </div>
+                {state.currentJob && (
+                  <div className="grid grid-cols-3 gap-2 text-sm text-muted-foreground">
+                    <div>Pages: {state.currentJob.pages_scraped || 0}</div>
+                    <div>Found: {state.currentJob.products_found || 0}</div>
+                    <div>Saved: {state.currentJob.products_inserted || 0}</div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Completed Suppliers List */}
+          {state.completedSuppliers.length > 0 && (
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {state.completedSuppliers.map((s, i) => (
+                <div key={i} className="flex items-center justify-between text-sm px-2 py-1.5 rounded bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    {s.success ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    )}
+                    <span>{s.name}</span>
+                  </div>
+                  <span className="text-muted-foreground">{s.products} products</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Suppliers without URLs warning */}
+          {!state.isRunning && !isComplete && suppliers && (
+            <div className="text-sm text-muted-foreground">
+              {suppliers.length - suppliersWithUrls.length > 0 && (
+                <p className="text-amber-600">
+                  ⚠️ {suppliers.length - suppliersWithUrls.length} suppliers don't have website URLs and will be skipped.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          {!state.isRunning && !isComplete && (
+            <>
+              <Button variant="outline" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button onClick={startBulkImport} disabled={suppliersWithUrls.length === 0}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Start Import ({suppliersWithUrls.length} suppliers)
+              </Button>
+            </>
+          )}
+          {isComplete && (
+            <Button onClick={handleClose} className="w-full">
+              Done
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
