@@ -20,6 +20,70 @@ interface ScrapedProduct {
   usage_types?: string[];
 }
 
+// Supplier-specific configuration
+interface SupplierConfig {
+  productUrlPatterns?: RegExp[];
+  excludeUrlPatterns?: RegExp[];
+  skipAuFilter?: boolean;
+  mapFromRoot?: boolean;
+  rootDomain?: string;
+  useCrawlFallback?: boolean;
+  imageSelectors?: string[];
+}
+
+const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
+  'polytec': {
+    productUrlPatterns: [/\/colours\//, /\/decors?\//, /\/ravine\//, /\/melamine\//, /\/laminate\//],
+    excludeUrlPatterns: [/\/stockists/, /\/contact/, /\/news/, /\/sustainability/],
+  },
+  'laminex': {
+    productUrlPatterns: [/\/products\/.*\/colours/, /\/decorative-surfaces/, /\/colours\//, /\/benchtops\//, /\/essastone\//, /\/minerals\//],
+    excludeUrlPatterns: [/\/location\//, /\/find-a-retailer/, /\/contact/, /\/sustainability/, /\/inspirations\//],
+    mapFromRoot: false,
+  },
+  'essastone': {
+    mapFromRoot: true,
+    rootDomain: 'https://www.laminex.com.au',
+    productUrlPatterns: [/\/essastone\/colours/, /\/essastone.*colour/],
+  },
+  'forestone': {
+    skipAuFilter: true, // Australian company with non-.com.au domain
+    productUrlPatterns: [/\/products\//, /\/our-brands\//, /\/egger\//, /\/meganite\//, /\/range\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/sustainability/],
+  },
+  'designerone': {
+    skipAuFilter: true,
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//],
+  },
+  'hafele': {
+    useCrawlFallback: true,
+    productUrlPatterns: [/\/products\/.*handles/, /\/products\/.*knobs/, /\/products\/.*pulls/, /\/hardware\//],
+    excludeUrlPatterns: [/\/cart/, /\/checkout/, /\/account/],
+    imageSelectors: ['img[data-src]', 'img.product-image'],
+  },
+  'caesarstone': {
+    productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//],
+    excludeUrlPatterns: [/\/find-a-retailer/, /\/contact/, /\/blog/],
+  },
+  'dekton': {
+    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /dekton.*colour/],
+    excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
+  },
+  'silestone': {
+    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/],
+    excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
+  },
+  'nikpol': {
+    productUrlPatterns: [/\/product\//, /\/feelwood\//, /\/laminate\//, /\/board\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/news/],
+  },
+  'egger': {
+    skipAuFilter: true,
+    productUrlPatterns: [/\/decor\//, /\/products\//, /\/eurodekor\//, /\/perfectsense\//],
+    excludeUrlPatterns: [/\/contact/, /\/company/, /\/career/],
+  },
+};
+
 // Detect product type, thickness, and usage_types based on URL and product info
 function detectProductClassification(
   pageUrl: string, 
@@ -49,6 +113,9 @@ function detectProductClassification(
 
   // Laminex detection
   if (supplierSlug === 'laminex' || supplierName.includes('laminex')) {
+    if (lowerUrl.includes('essastone') || lowerUrl.includes('minerals')) {
+      return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+    }
     if (lowerUrl.includes('benchtop') || lowerUrl.includes('compact')) {
       return { product_type: 'compact_laminate', thickness: null, usage_types: ['bench_tops'] };
     }
@@ -61,6 +128,11 @@ function detectProductClassification(
     if (lowerUrl.includes('16mm')) {
       return { product_type: 'board', thickness: '16mm', usage_types: ['doors'] };
     }
+  }
+
+  // Essastone detection
+  if (supplierSlug === 'essastone' || lowerUrl.includes('essastone')) {
+    return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
   }
 
   // ForestOne / EGGER detection
@@ -134,10 +206,28 @@ const AUSTRALIAN_PATTERNS = [
   '/australia/',
 ];
 
+// Known Australian domains without .com.au
+const KNOWN_AUSTRALIAN_DOMAINS = [
+  'forest.one',
+  'designerone.com',
+  'polytec.com',
+];
+
 // Check if URL is Australian
 function isAustralianUrl(url: string): boolean {
   const lowerUrl = url.toLowerCase();
-  return AUSTRALIAN_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+  
+  // Check standard patterns
+  if (AUSTRALIAN_PATTERNS.some(pattern => lowerUrl.includes(pattern))) {
+    return true;
+  }
+  
+  // Check known Australian domains
+  if (KNOWN_AUSTRALIAN_DOMAINS.some(domain => lowerUrl.includes(domain))) {
+    return true;
+  }
+  
+  return false;
 }
 
 // Retry helper with exponential backoff
@@ -174,7 +264,7 @@ async function fetchWithRetry(
   throw lastError || new Error('All retry attempts failed');
 }
 
-// Extract product info from HTML - enhanced for Australian suppliers
+// Extract product info from HTML - enhanced for various suppliers
 function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string, supplierSlug?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
@@ -185,47 +275,131 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     /<img[^>]+alt=["']([^"']+)["'][^>]*src=["']([^"']+)["']/gi,
     // Data-src for lazy loading
     /<img[^>]+data-src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
-    // Background image patterns
-    /style=["'][^"']*background-image:\s*url\(['"]?([^'")\s]+)['"]?\)[^"']*["'][^>]*data-name=["']([^"']+)["']/gi,
+    /<img[^>]+alt=["']([^"']+)["'][^>]*data-src=["']([^"']+)["']/gi,
+    // Srcset patterns
+    /<img[^>]+srcset=["']([^"'\s]+)[^"']*["'][^>]*alt=["']([^"']+)["']/gi,
+    // Picture source patterns
+    /<source[^>]+srcset=["']([^"'\s]+)[^"']*["'][^>]*>[^<]*<img[^>]*alt=["']([^"']+)["']/gi,
   ];
   
   // Cosentino-specific patterns (Dekton, Silestone)
-  if (supplierSlug === 'dekton' || supplierSlug === 'silestone') {
-    const colourCards = html.matchAll(/<div[^>]*class="[^"]*colour[^"]*"[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi);
+  if (supplierSlug === 'dekton' || supplierSlug === 'silestone' || supplierSlug === 'caesarstone') {
+    const colourCards = html.matchAll(/<div[^>]*class="[^"]*(?:colour|color|swatch|product-card)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi);
     for (const match of colourCards) {
       if (match[1] && match[2]) {
-        products.push({
-          name: match[2].trim(),
-          image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-          color: match[2].trim(),
-          source_url: pageUrl,
-        });
+        const name = match[2].trim();
+        if (name.length > 2 && name.length < 80) {
+          products.push({
+            name,
+            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+            color: name,
+            source_url: pageUrl,
+          });
+        }
+      }
+    }
+    
+    // Also try structured product data
+    const productDataMatches = html.matchAll(/data-product[^=]*=["']([^"']+)["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/gi);
+    for (const match of productDataMatches) {
+      if (match[1] && match[2]) {
+        try {
+          const productData = JSON.parse(decodeURIComponent(match[1]));
+          if (productData.name) {
+            products.push({
+              name: productData.name,
+              image_url: match[2].startsWith('http') ? match[2] : baseUrl + match[2],
+              color: productData.name,
+              source_url: pageUrl,
+            });
+          }
+        } catch {
+          // Ignore parse errors
+        }
       }
     }
   }
   
-  // Polytec/Laminex pattern - colour swatches
-  if (supplierSlug === 'polytec' || supplierSlug === 'laminex' || supplierSlug === 'nikpol') {
-    const swatchPattern = /<div[^>]*class="[^"]*(?:swatch|colour|decor|product)[^"]*"[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?(?:<span|<p|<h)[^>]*>([^<]+)</gi;
-    const swatches = html.matchAll(swatchPattern);
-    for (const match of swatches) {
-      if (match[1] && match[2] && match[2].trim().length > 2) {
-        products.push({
-          name: match[2].trim(),
-          image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-          color: match[2].trim(),
-          source_url: pageUrl,
-        });
+  // Hafele hardware patterns
+  if (supplierSlug === 'hafele') {
+    const productCards = html.matchAll(/<div[^>]*class="[^"]*product[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:h[2-4]|span|div)[^>]*class="[^"]*(?:name|title)[^"]*"[^>]*>([^<]+)</gi);
+    for (const match of productCards) {
+      if (match[1] && match[2]) {
+        const name = match[2].trim();
+        if (name.length > 2 && name.length < 100) {
+          products.push({
+            name,
+            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+            source_url: pageUrl,
+          });
+        }
       }
     }
   }
   
-  // Standard image extraction
+  // Polytec/Laminex/Nikpol pattern - colour swatches
+  if (supplierSlug === 'polytec' || supplierSlug === 'laminex' || supplierSlug === 'nikpol' || supplierSlug === 'essastone') {
+    const swatchPatterns = [
+      /<div[^>]*class="[^"]*(?:swatch|colour|decor|product|colour-item|color-item)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?(?:<span|<p|<h|<div)[^>]*>([^<]+)</gi,
+      /<a[^>]*class="[^"]*(?:colour|color|swatch)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+      /<li[^>]*class="[^"]*(?:colour|color|decor)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi,
+    ];
+    
+    for (const swatchPattern of swatchPatterns) {
+      const swatches = html.matchAll(swatchPattern);
+      for (const match of swatches) {
+        if (match[1] && match[2] && match[2].trim().length > 2 && match[2].trim().length < 80) {
+          products.push({
+            name: match[2].trim(),
+            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+            color: match[2].trim(),
+            source_url: pageUrl,
+          });
+        }
+      }
+    }
+  }
+  
+  // ForestOne / EGGER patterns
+  if (supplierSlug === 'forestone' || supplierSlug === 'egger' || supplierSlug === 'designerone') {
+    const brandPatterns = [
+      /<div[^>]*class="[^"]*(?:decor|product|range-item|brand-item)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi,
+      /<article[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    ];
+    
+    for (const pattern of brandPatterns) {
+      const matches = html.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && match[2]) {
+          const name = match[2].trim();
+          if (name.length > 2 && name.length < 80) {
+            products.push({
+              name,
+              image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
+              color: name,
+              source_url: pageUrl,
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  // Standard image extraction for any remaining products
   for (const pattern of imgPatterns) {
     const matches = html.matchAll(pattern);
     for (const match of matches) {
-      let imageUrl = pattern === imgPatterns[0] || pattern === imgPatterns[2] ? match[1] : match[2];
-      let altText = pattern === imgPatterns[0] || pattern === imgPatterns[2] ? match[2] : match[1];
+      // Handle different match ordering
+      let imageUrl: string;
+      let altText: string;
+      
+      if (pattern.source.indexOf('src=') < pattern.source.indexOf('alt=')) {
+        imageUrl = match[1];
+        altText = match[2];
+      } else {
+        altText = match[1];
+        imageUrl = match[2];
+      }
       
       if (!imageUrl || !altText) continue;
       if (imageUrl.includes('logo') || imageUrl.includes('icon') || imageUrl.includes('sprite')) continue;
@@ -233,7 +407,7 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
       if (altText.length < 3 || altText.length > 100) continue;
       
       // Skip non-product alt text
-      const skipWords = ['menu', 'navigation', 'banner', 'hero', 'slider', 'button', 'close', 'search', 'arrow'];
+      const skipWords = ['menu', 'navigation', 'banner', 'hero', 'slider', 'button', 'close', 'search', 'arrow', 'loading', 'placeholder'];
       if (skipWords.some(word => altText.toLowerCase().includes(word))) continue;
       
       const isProduct = 
@@ -247,6 +421,8 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         imageUrl.includes('veneer') ||
         imageUrl.includes('stone') ||
         imageUrl.includes('surface') ||
+        imageUrl.includes('handle') ||
+        imageUrl.includes('hardware') ||
         /\d{3,}/.test(imageUrl) ||
         /[A-Z]{2,}\d{3,}/.test(altText) || // SKU pattern
         altText.toLowerCase().includes('oak') ||
@@ -255,7 +431,10 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         altText.toLowerCase().includes('grey') ||
         altText.toLowerCase().includes('gray') ||
         altText.toLowerCase().includes('marble') ||
-        altText.toLowerCase().includes('concrete');
+        altText.toLowerCase().includes('concrete') ||
+        altText.toLowerCase().includes('brushed') ||
+        altText.toLowerCase().includes('matt') ||
+        altText.toLowerCase().includes('gloss');
         
       if (!isProduct) continue;
       
@@ -296,29 +475,33 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
   return products;
 }
 
-// Filter URLs to find product pages - enhanced for AU sites
-function filterProductUrls(urls: string[], baseUrl: string, requireAustralian: boolean = true): string[] {
-  const productKeywords = [
+// Filter URLs to find product pages with supplier-specific configuration
+function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string, requireAustralian: boolean = true): string[] {
+  const config = SUPPLIER_CONFIGS[supplierSlug];
+  
+  const genericProductKeywords = [
     'product', 'colour', 'color', 'colours', 'colors', 'decor', 'range', 'collection',
     'laminate', 'veneer', 'timber', 'stone', 'surface', 'finish',
     'swatch', 'sample', 'melamine', 'compact', 'acrylic', 'benchtop',
-    'door', 'panel', 'board', 'woodgrain', 'solid-colour', 'metallic'
+    'door', 'panel', 'board', 'woodgrain', 'solid-colour', 'metallic',
+    'handle', 'knob', 'pull', 'hardware', 'eurodekor', 'perfectsense',
+    'meganite', 'egger', 'feelwood'
   ];
   
-  const excludeKeywords = [
+  const genericExcludeKeywords = [
     'blog', 'news', 'contact', 'about', 'login', 'cart', 'checkout',
     'privacy', 'terms', 'faq', 'help', 'support', 'career', 'job',
     'pdf', 'download', 'document', 'warranty', 'sustainability',
     'video', 'instagram', 'facebook', 'twitter', 'linkedin', 'youtube',
-    'subscribe', 'newsletter', 'sitemap', 'search', 'account'
+    'subscribe', 'newsletter', 'sitemap', 'search', 'account', 'location',
+    'find-a-retailer', 'stockists', 'inspirations', 'professional'
   ];
   
   return urls.filter(url => {
     const lowerUrl = url.toLowerCase();
     
-    // Check Australian requirement
-    if (requireAustralian && !isAustralianUrl(url)) {
-      // Allow if base URL is already Australian
+    // Check Australian requirement (skip if supplier config says to)
+    if (requireAustralian && !config?.skipAuFilter && !isAustralianUrl(url)) {
       if (!isAustralianUrl(baseUrl)) {
         return false;
       }
@@ -328,19 +511,79 @@ function filterProductUrls(urls: string[], baseUrl: string, requireAustralian: b
       const urlObj = new URL(url);
       const baseObj = new URL(baseUrl);
       // Allow same domain or subdomains
-      if (!urlObj.hostname.endsWith(baseObj.hostname.replace('www.', ''))) {
+      const baseDomain = baseObj.hostname.replace('www.', '');
+      const urlDomain = urlObj.hostname.replace('www.', '');
+      if (!urlDomain.endsWith(baseDomain) && !baseDomain.endsWith(urlDomain)) {
         return false;
       }
     } catch {
       return false;
     }
     
-    if (excludeKeywords.some(kw => lowerUrl.includes(kw))) return false;
-    if (productKeywords.some(kw => lowerUrl.includes(kw))) return true;
+    // Use supplier-specific patterns if available
+    if (config) {
+      // Check exclude patterns first
+      if (config.excludeUrlPatterns?.some(p => p.test(lowerUrl))) {
+        return false;
+      }
+      // Check include patterns
+      if (config.productUrlPatterns?.some(p => p.test(lowerUrl))) {
+        return true;
+      }
+    }
+    
+    // Generic filtering
+    if (genericExcludeKeywords.some(kw => lowerUrl.includes(kw))) return false;
+    if (genericProductKeywords.some(kw => lowerUrl.includes(kw))) return true;
     if (/\/[a-z]{2,3}\d{3,}/.test(lowerUrl)) return true;
     
     return false;
   });
+}
+
+// Crawl fallback when map returns no results
+async function crawlFallback(url: string, firecrawlKey: string, limit: number = 50): Promise<string[]> {
+  console.log(`Using crawl fallback for ${url}`);
+  
+  try {
+    const crawlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/crawl', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        limit,
+        maxDepth: 2,
+        scrapeOptions: {
+          formats: ['links'],
+        },
+      }),
+    }, 2, 3000);
+    
+    const crawlData = await crawlResponse.json();
+    
+    if (crawlResponse.ok && crawlData.data) {
+      const allLinks: string[] = [];
+      for (const page of crawlData.data) {
+        if (page.links && Array.isArray(page.links)) {
+          allLinks.push(...page.links);
+        }
+        if (page.metadata?.sourceURL) {
+          allLinks.push(page.metadata.sourceURL);
+        }
+      }
+      console.log(`Crawl fallback found ${allLinks.length} URLs`);
+      return [...new Set(allLinks)];
+    }
+    
+    console.log('Crawl fallback failed:', crawlData.error || 'Unknown error');
+    return [];
+  } catch (error) {
+    console.error('Crawl fallback error:', error);
+    return [];
+  }
 }
 
 Deno.serve(async (req) => {
@@ -386,6 +629,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    const supplierSlug = supplier.slug?.toLowerCase() || '';
+    const config = SUPPLIER_CONFIGS[supplierSlug] || {};
+
     // Create scrape job for progress tracking
     const { data: job, error: jobError } = await supabase
       .from('scrape_jobs')
@@ -421,13 +667,20 @@ Deno.serve(async (req) => {
       baseUrl = url;
     }
 
+    // Determine URL to map (may be different for sub-brands)
+    let urlToMap = url;
+    if (config.mapFromRoot && config.rootDomain) {
+      urlToMap = config.rootDomain;
+      console.log(`Using root domain for mapping: ${urlToMap}`);
+    }
+
     // Check if base URL is Australian
-    const isAustraliaSite = isAustralianUrl(url);
-    console.log(`Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite})`);
+    const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
+    console.log(`Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite}, slug: ${supplierSlug})`);
 
     // Step 1: Map the entire website
     console.log('Step 1: Mapping website...');
-    await updateJob({ status: 'mapping', current_url: url });
+    await updateJob({ status: 'mapping', current_url: urlToMap });
     
     let allUrls: string[] = [];
     
@@ -439,35 +692,69 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: url,
-          limit: options?.mapLimit || 2000,
+          url: urlToMap,
+          limit: options?.mapLimit || 3000,
           includeSubdomains: false,
         }),
       });
 
       const mapData = await mapResponse.json();
       
-      if (mapResponse.ok && mapData.links) {
+      if (mapResponse.ok && mapData.links && mapData.links.length > 0) {
         allUrls = mapData.links;
         console.log(`Found ${allUrls.length} total URLs on website`);
         await updateJob({ urls_mapped: allUrls.length });
       } else {
-        console.error('Map failed:', mapData);
-        allUrls = [url];
-        await updateJob({ urls_mapped: 1 });
+        console.error('Map failed or returned no URLs:', mapData);
+        
+        // Try crawl fallback if configured or if map returned nothing
+        if (config.useCrawlFallback || allUrls.length === 0) {
+          allUrls = await crawlFallback(url, firecrawlKey, 50);
+          if (allUrls.length === 0) {
+            allUrls = [url];
+          }
+        } else {
+          allUrls = [url];
+        }
+        await updateJob({ urls_mapped: allUrls.length });
       }
     } catch (error) {
       console.error('Map request failed:', error);
-      allUrls = [url];
-      await updateJob({ urls_mapped: 1 });
+      
+      // Try crawl fallback
+      if (config.useCrawlFallback) {
+        allUrls = await crawlFallback(url, firecrawlKey, 50);
+        if (allUrls.length === 0) {
+          allUrls = [url];
+        }
+      } else {
+        allUrls = [url];
+      }
+      await updateJob({ urls_mapped: allUrls.length });
     }
 
-    // Step 2: Filter to product-related URLs (Australian only if base isn't AU)
+    // If we mapped from root domain for a sub-brand, filter to relevant URLs
+    if (config.mapFromRoot && config.rootDomain) {
+      const originalUrl = new URL(url);
+      const pathPrefix = originalUrl.pathname;
+      allUrls = allUrls.filter(u => {
+        try {
+          const parsed = new URL(u);
+          return parsed.pathname.startsWith(pathPrefix) || 
+                 config.productUrlPatterns?.some(p => p.test(u));
+        } catch {
+          return false;
+        }
+      });
+      console.log(`Filtered to ${allUrls.length} URLs for sub-brand path: ${pathPrefix}`);
+    }
+
+    // Step 2: Filter to product-related URLs
     const requireAustralian = !isAustraliaSite;
-    const productUrls = filterProductUrls(allUrls, baseUrl, requireAustralian);
+    const productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, requireAustralian);
     console.log(`Filtered to ${productUrls.length} product-related URLs (AU filter: ${requireAustralian})`);
     
-    const maxPages = options?.maxPages || 30;
+    const maxPages = options?.maxPages || 50;
     const urlsToScrape = productUrls.slice(0, maxPages);
     
     await updateJob({ 
@@ -511,7 +798,7 @@ Deno.serve(async (req) => {
         const scrapeData = await scrapeResponse.json();
         
         if (scrapeResponse.ok && scrapeData.data?.html) {
-          const products = extractProductsFromHtml(scrapeData.data.html, pageUrl, baseUrl, supplier.slug);
+          const products = extractProductsFromHtml(scrapeData.data.html, pageUrl, baseUrl, supplierSlug);
           console.log(`  Found ${products.length} products on ${pageUrl}`);
           allProducts.push(...products);
           scrapedUrls.push(pageUrl);
@@ -546,7 +833,7 @@ Deno.serve(async (req) => {
 
     // Step 5: Upsert products into catalog_items (prevents duplicates by name per supplier)
     const insertedProducts: any[] = [];
-    const insertLimit = options?.insertLimit || 300;
+    const insertLimit = options?.insertLimit || 500;
     
     for (const product of uniqueProducts.slice(0, insertLimit)) {
       try {
@@ -613,6 +900,7 @@ Deno.serve(async (req) => {
         jobId,
         supplier: supplier.name,
         isAustralianSite: isAustraliaSite,
+        supplierConfig: config ? 'custom' : 'generic',
         stats: {
           urlsMapped: allUrls.length,
           productUrlsFound: productUrls.length,
