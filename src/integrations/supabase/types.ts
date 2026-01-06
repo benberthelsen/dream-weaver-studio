@@ -278,6 +278,65 @@ export type Database = {
         }
         Relationships: []
       }
+      scrape_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_url: string | null
+          error_message: string | null
+          id: string
+          pages_failed: number | null
+          pages_scraped: number | null
+          products_found: number | null
+          products_inserted: number | null
+          started_at: string | null
+          status: string
+          supplier_id: string | null
+          urls_mapped: number | null
+          urls_to_scrape: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_url?: string | null
+          error_message?: string | null
+          id?: string
+          pages_failed?: number | null
+          pages_scraped?: number | null
+          products_found?: number | null
+          products_inserted?: number | null
+          started_at?: string | null
+          status?: string
+          supplier_id?: string | null
+          urls_mapped?: number | null
+          urls_to_scrape?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_url?: string | null
+          error_message?: string | null
+          id?: string
+          pages_failed?: number | null
+          pages_scraped?: number | null
+          products_found?: number | null
+          products_inserted?: number | null
+          started_at?: string | null
+          status?: string
+          supplier_id?: string | null
+          urls_mapped?: number | null
+          urls_to_scrape?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scrape_jobs_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           created_at: string
