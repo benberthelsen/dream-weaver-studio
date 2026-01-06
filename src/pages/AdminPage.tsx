@@ -856,13 +856,77 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   );
 }
 
+const USAGE_TYPE_OPTIONS = [
+  { value: 'doors', label: 'Doors' },
+  { value: 'panels', label: 'Panels' },
+  { value: 'kicks', label: 'Kicks' },
+  { value: 'bench_tops', label: 'Bench Tops' },
+  { value: 'carcass', label: 'Carcass' },
+  { value: 'splashbacks', label: 'Splashbacks' },
+];
+
+const PRODUCT_TYPE_OPTIONS = [
+  { value: 'board', label: 'Board' },
+  { value: 'laminate', label: 'Laminate (HPL)' },
+  { value: 'compact_laminate', label: 'Compact Laminate' },
+  { value: 'solid_surface', label: 'Solid Surface' },
+  { value: 'veneer', label: 'Veneer' },
+  { value: 'hardware', label: 'Hardware' },
+  { value: 'metallic', label: 'Metallic' },
+];
+
 function ProductsList() {
-  const { data: items, isLoading } = useCatalogItems({});
+  const { data: items, isLoading, refetch } = useCatalogItems({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{
+    product_type: string;
+    thickness: string;
+    usage_types: string[];
+  }>({ product_type: 'board', thickness: '', usage_types: [] });
 
   const filteredItems = items?.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item.id);
+    setEditValues({
+      product_type: item.product_type || 'board',
+      thickness: item.thickness || '',
+      usage_types: item.usage_types || [],
+    });
+  };
+
+  const handleSave = async (itemId: string) => {
+    try {
+      const { error } = await supabase
+        .from('catalog_items')
+        .update({
+          product_type: editValues.product_type,
+          thickness: editValues.thickness || null,
+          usage_types: editValues.usage_types,
+        })
+        .eq('id', itemId);
+
+      if (error) throw error;
+      toast.success('Product updated');
+      setEditingItem(null);
+      refetch();
+    } catch (err) {
+      toast.error('Failed to update product');
+      console.error(err);
+    }
+  };
+
+  const toggleUsageType = (value: string) => {
+    setEditValues(prev => ({
+      ...prev,
+      usage_types: prev.usage_types.includes(value)
+        ? prev.usage_types.filter(t => t !== value)
+        : [...prev.usage_types, value],
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -890,59 +954,110 @@ function ProductsList() {
             <tr>
               <th className="text-left p-3 text-sm font-medium">Product</th>
               <th className="text-left p-3 text-sm font-medium">Supplier</th>
-              <th className="text-left p-3 text-sm font-medium">Color</th>
-              <th className="text-left p-3 text-sm font-medium">Status</th>
+              <th className="text-left p-3 text-sm font-medium">Type</th>
+              <th className="text-left p-3 text-sm font-medium">Usage Types</th>
+              <th className="text-left p-3 text-sm font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filteredItems?.slice(0, 50).map((item) => (
-              <tr key={item.id} className="hover:bg-muted/30">
-                <td className="p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded bg-muted overflow-hidden">
-                      <img 
-                        src={item.thumbnail_url || item.image_url}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/placeholder.svg';
-                        }}
-                      />
+            {filteredItems?.slice(0, 100).map((item) => {
+              const isEditing = editingItem === item.id;
+              const itemUsageTypes = (item as any).usage_types || [];
+              const itemProductType = (item as any).product_type || 'board';
+              const itemThickness = (item as any).thickness || '';
+
+              return (
+                <tr key={item.id} className="hover:bg-muted/30">
+                  <td className="p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded bg-muted overflow-hidden flex-shrink-0">
+                        <img 
+                          src={item.thumbnail_url || item.image_url}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/placeholder.svg';
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-medium block truncate">{item.name}</span>
+                        {itemThickness && (
+                          <span className="text-xs text-muted-foreground">{itemThickness}</span>
+                        )}
+                      </div>
                     </div>
-                    <span className="font-medium">{item.name}</span>
-                  </div>
-                </td>
-                <td className="p-3 text-muted-foreground">
-                  {item.supplier?.name || "-"}
-                </td>
-                <td className="p-3">
-                  {item.hex_color ? (
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="h-4 w-4 rounded border"
-                        style={{ backgroundColor: item.hex_color }}
-                      />
-                      <span className="text-sm text-muted-foreground">{item.hex_color}</span>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
-                </td>
-                <td className="p-3">
-                  {item.is_active ? (
-                    <Badge variant="default" className="gap-1">
-                      <Check className="h-3 w-3" />
-                      Active
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      Inactive
-                    </Badge>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="p-3 text-muted-foreground">
+                    {item.supplier?.name || "-"}
+                  </td>
+                  <td className="p-3">
+                    {isEditing ? (
+                      <select
+                        value={editValues.product_type}
+                        onChange={(e) => setEditValues(prev => ({ ...prev, product_type: e.target.value }))}
+                        className="text-sm border rounded px-2 py-1"
+                      >
+                        {PRODUCT_TYPE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Badge variant="outline" className="capitalize">
+                        {itemProductType.replace('_', ' ')}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    {isEditing ? (
+                      <div className="flex flex-wrap gap-1">
+                        {USAGE_TYPE_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => toggleUsageType(opt.value)}
+                            className={`text-xs px-2 py-1 rounded border transition-colors ${
+                              editValues.usage_types.includes(opt.value)
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background border-border hover:bg-muted'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {itemUsageTypes.length > 0 ? (
+                          itemUsageTypes.map((usage: string) => (
+                            <Badge key={usage} variant="secondary" className="text-xs capitalize">
+                              {usage.replace('_', ' ')}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    {isEditing ? (
+                      <div className="flex gap-1">
+                        <Button size="sm" onClick={() => handleSave(item.id)}>
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingItem(null)}>
+                          <XCircle className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => handleEdit(item)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
