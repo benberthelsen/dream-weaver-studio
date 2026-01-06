@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
     
     console.log(`Unique products after dedup: ${uniqueProducts.length}`);
 
-    // Step 5: Upsert products into catalog_items (prevents duplicates)
+    // Step 5: Upsert products into catalog_items (prevents duplicates by name)
     const insertedProducts: any[] = [];
     const insertLimit = options?.insertLimit || 200;
     
@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
             is_active: true,
             last_synced_at: new Date().toISOString(),
           }, {
-            onConflict: 'supplier_id,name,image_url',
+            onConflict: 'supplier_id,name',
             ignoreDuplicates: false,
           })
           .select()
