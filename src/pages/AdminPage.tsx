@@ -512,7 +512,13 @@ function SuppliersList() {
 }
 
 function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
+  // Keep scrapeUrl in sync with supplier.website_url
   const [scrapeUrl, setScrapeUrl] = useState(supplier.website_url || "");
+  useEffect(() => {
+    if (supplier.website_url) {
+      setScrapeUrl(supplier.website_url);
+    }
+  }, [supplier.website_url]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<ScrapeJob | null>(null);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
