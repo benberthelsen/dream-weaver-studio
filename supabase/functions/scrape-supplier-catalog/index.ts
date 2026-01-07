@@ -1491,7 +1491,24 @@ Deno.serve(async (req) => {
       urls_mapped: allUrls.length
     });
 
-    // Step 3: Scrape each product page
+    // Supplier-specific extraction prompts for better accuracy
+    const SUPPLIER_PROMPTS: Record<string, string> = {
+      'essastone': 'Extract all Essastone engineered stone colour swatches from this page. Look for colour/color cards with names like "Pure White", "Ash Grey", "Silver Pearl". Each should have a name and image URL.',
+      'laminex': 'Extract all Laminex decor colours including laminate, Formica, and board colours. Look for colour swatches or product tiles.',
+      'polytec': 'Extract all Polytec decor colours including Ravine, Woodmatt, and standard colours. Look for colour swatches or decor cards.',
+      'smartstone': 'Extract all Smartstone quartz colours/colors from this page. Look for stone sample images with names.',
+      'navurban': 'Extract all Navurban timber veneer colours/species from this page.',
+      'lavistone': 'Extract all Lavistone quartz and stone colours from this product page.',
+      'caesarstone': 'Extract all Caesarstone quartz colours from this page. Look for colour swatches with names.',
+      'silestone': 'Extract all Silestone quartz colours from this page.',
+      'dekton': 'Extract all Dekton ultra-compact surface colours from this page.',
+      'forestone': 'Extract all product colours including Meganite, Egger, and other brands.',
+    };
+
+    const extractionPrompt = SUPPLIER_PROMPTS[supplierSlug] || 
+      `Extract all product colours, finishes, or stone colours from this ${supplier.name} catalogue page. Look for colour swatches, product tiles, colour cards, or sample images. Each product should have a name (the colour/finish name) and the image URL.`;
+
+    // Step 3: Scrape each product page using JSON extraction (with HTML fallback)
     const allProducts: ScrapedProduct[] = [];
     const scrapedUrls: string[] = [];
     const failedUrls: string[] = [];
@@ -1510,7 +1527,9 @@ Deno.serve(async (req) => {
       try {
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const scrapeResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+        // Try JSON extraction first (more reliable with LLM understanding)
+        console.log(`  Attempting JSON extraction...`);
+        const jsonResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${firecrawlKey}`,
@@ -1518,36 +1537,107 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             url: pageUrl,
-            formats: ['html'],
-            onlyMainContent: false,
+            formats: ['json'],
+            jsonOptions: {
+              schema: {
+                type: 'object',
+                properties: {
+                  products: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string', description: 'Product or colour/color name' },
+                        image_url: { type: 'string', description: 'URL of product image or swatch' },
+                        color: { type: 'string', description: 'Color name if different from product name' },
+                        material: { type: 'string', description: 'Material type (e.g., quartz, laminate, timber, stone)' },
+                      },
+                      required: ['name', 'image_url']
+                    },
+                    description: 'List of products/colours found on the page'
+                  }
+                },
+                required: ['products']
+              },
+              prompt: extractionPrompt
+            },
           }),
         }, 2, 3000);
 
-        const scrapeData = await scrapeResponse.json();
+        const jsonData = await jsonResponse.json();
+        let extractedProducts: ScrapedProduct[] = [];
         
-        if (scrapeResponse.ok && scrapeData.data?.html) {
-          const html = scrapeData.data.html;
+        if (jsonResponse.ok && jsonData.data?.json?.products) {
+          const jsonProducts = jsonData.data.json.products;
+          console.log(`  JSON extraction found ${jsonProducts.length} products`);
           
-          // Check if this is an error page
-          const errorCheck = isErrorPage(html);
-          if (errorCheck.isError) {
-            console.log(`  Skipping error page ${pageUrl}: ${errorCheck.reason}`);
-            failedUrls.push(pageUrl);
-            continue;
+          for (const p of jsonProducts) {
+            if (p.name && p.image_url) {
+              // Resolve relative URLs
+              let imageUrl = p.image_url;
+              if (!imageUrl.startsWith('http')) {
+                imageUrl = baseUrl + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
+              }
+              
+              extractedProducts.push({
+                name: p.name,
+                image_url: imageUrl,
+                color: p.color || p.name,
+                material: p.material,
+                source_url: pageUrl,
+              });
+            }
           }
+        } else {
+          console.log(`  JSON extraction failed or returned no products:`, jsonData.error || 'empty response');
+        }
+        
+        // If JSON extraction returned few/no products, try HTML fallback
+        if (extractedProducts.length < 3) {
+          console.log(`  JSON found ${extractedProducts.length}, trying HTML fallback...`);
           
-          const products = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
-          console.log(`  Found ${products.length} products on ${pageUrl}`);
+          const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: pageUrl,
+              formats: ['html'],
+              onlyMainContent: false,
+            }),
+          }, 2, 3000);
+
+          const htmlData = await htmlResponse.json();
           
-          // Debug: if 0 products found, log some context
-          if (products.length === 0) {
-            console.log(`  DEBUG: HTML length: ${html.length}, supplier: ${supplierSlug}`);
+          if (htmlResponse.ok && htmlData.data?.html) {
+            const html = htmlData.data.html;
+            
+            // Check if this is an error page
+            const errorCheck = isErrorPage(html);
+            if (errorCheck.isError) {
+              console.log(`  Skipping error page ${pageUrl}: ${errorCheck.reason}`);
+              failedUrls.push(pageUrl);
+              continue;
+            }
+            
+            const htmlProducts = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
+            console.log(`  HTML fallback found ${htmlProducts.length} products`);
+            
+            // Use HTML products if we got more than JSON
+            if (htmlProducts.length > extractedProducts.length) {
+              extractedProducts = htmlProducts;
+            }
           }
-          
-          allProducts.push(...products);
+        }
+        
+        if (extractedProducts.length > 0) {
+          console.log(`  Final: ${extractedProducts.length} products from ${pageUrl}`);
+          allProducts.push(...extractedProducts);
           scrapedUrls.push(pageUrl);
         } else {
-          console.log(`  Failed to scrape ${pageUrl}:`, scrapeData.error);
+          console.log(`  No products found on ${pageUrl}`);
           failedUrls.push(pageUrl);
         }
       } catch (error) {
