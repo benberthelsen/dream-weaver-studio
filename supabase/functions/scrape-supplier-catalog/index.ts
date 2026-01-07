@@ -39,6 +39,8 @@ interface SupplierConfig {
   useCrawlFallback?: boolean;
   imageSelectors?: string[];
   subBrands?: Record<string, SubBrandConfig>;
+  seedUrls?: string[];  // Fallback URLs to scrape when no product URLs found
+  subBrandExcludePatterns?: RegExp[];  // Extra patterns to exclude for sub-brands
 }
 
 const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
@@ -54,8 +56,32 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   'essastone': {
     mapFromRoot: true,
     rootDomain: 'https://www.laminex.com.au',
-    productUrlPatterns: [/\/essastone/, /\/products\/.*essastone/, /\/colours\/.*essastone/i, /essastone.*colour/],
+    productUrlPatterns: [
+      /\/products\/benchtops\/essastone/,
+      /\/essastone\/colours/,
+      /\/browse\/.*essastone/,
+      /\/b\/.*essastone/i,
+    ],
+    excludeUrlPatterns: [
+      /\/article\//,
+      /\/news\//,
+      /\/insights\//,
+      /\/blog\//,
+      /\/inspiration\//,
+      /\/case-study\//,
+      /\/sustainability\//,
+    ],
+    subBrandExcludePatterns: [
+      /\/article\//,
+      /\/news\//,
+      /\/insights\//,
+      /\/blog\//,
+    ],
     skipAuFilter: true,
+    seedUrls: [
+      '/products/benchtops/essastone',
+      '/browse/colour-texture?brand=essastone',
+    ],
   },
   'forestone': {
     skipAuFilter: true,
@@ -96,9 +122,34 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   },
   'hafele': {
     useCrawlFallback: true,
-    productUrlPatterns: [/\/products\/.*handle/, /\/products\/.*knob/, /\/products\/.*pull/, /\/hardware\//, /\/cabinet-hardware\//, /\/kitchen-handles\//],
-    excludeUrlPatterns: [/\/cart/, /\/checkout/, /\/account/],
+    productUrlPatterns: [
+      /\/products\/.*handle/i,
+      /\/products\/.*knob/i,
+      /\/products\/.*pull/i,
+      /\/products\/furniture-fittings/,
+      /\/products\/kitchen/,
+      /\/products\/cabinet/,
+      /\/hardware\//,
+      /\/cabinet-hardware\//,
+      /\/kitchen-handles\//,
+      /\/en\/products\//,
+    ],
+    excludeUrlPatterns: [
+      /\/cart/,
+      /\/checkout/,
+      /\/account/,
+      /\/login/,
+      /\/register/,
+      /\/newsletter/,
+      /\/contact/,
+      /\/about/,
+      /\.pdf$/,
+    ],
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
+    seedUrls: [
+      '/en/products/furniture-fittings/',
+      '/en/products/kitchen/',
+    ],
   },
   'caesarstone': {
     productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
@@ -130,8 +181,9 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     skipAuFilter: true,
   },
   'navurban': {
-    productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//],
+    productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//, /\/timber\//],
     excludeUrlPatterns: [/\/contact/, /\/about/],
+    seedUrls: ['/navurban/'],  // Single-page catalog - scrape main page
   },
   'lithostone': {
     productUrlPatterns: [/\/products\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//],
@@ -142,8 +194,9 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeUrlPatterns: [/\/contact/, /\/about/],
   },
   'lavistone': {
-    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//, /\/collection\//, /\/quartz\//],
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//, /\/collection\//, /\/quartz\//, /\/our-range\//, /\/product-category\//],
     excludeUrlPatterns: [/\/contact/, /\/about/],
+    seedUrls: ['/our-range/', '/products/'],  // WooCommerce-style - use archive pages
   },
   'quantum-quartz': {
     productUrlPatterns: [/\/colours\//, /\/collection\//, /\/quartz\//, /\/products\//],
@@ -172,9 +225,13 @@ function isValidProductName(name: string): boolean {
     /\.jpg$/i, /\.jpeg$/i, /\.png$/i, /\.webp$/i, /\.gif$/i, /\.svg$/i,
     // URLs as names
     /^https?:\/\//i,
-    // UI elements and buttons
+    // UI elements and buttons - EXPANDED
     /^(quick view|more info|add to|find out|view all|learn more|see more|click here|read more)/i,
     /^(download|upload|submit|cancel|close|open|back|next|previous|shop now)/i,
+    /^(newsletter|print page|my account|sign in|sign up|log in|log out|register)/i,
+    /^(share|email|print|copy link|bookmark|save|like|heart|favorite)/i,
+    /^(zoom|expand|fullscreen|enlarge|magnify|lightbox)/i,
+    /^(show more|show less|see all|view more|load more|expand all)/i,
     // Category/section labels (not products)
     /^(moodboard|sustainability|bathrooms|kitchens|laundry|outdoor|interior|exterior)$/i,
     /^(accents|minerals|woodgrains|whites|darks|neutrals|colours|colors|all colours)$/i,
@@ -193,6 +250,11 @@ function isValidProductName(name: string): boolean {
     /^(loading|please wait|error|undefined|null|NaN)$/i,
     /^\d+x\d+$/i,  // Dimensions like "1200x800"
     /^(prev|next|left|right|up|down|arrow)$/i,
+    // Common UI elements that Hafele and other sites show
+    /^(add to cart|add to basket|buy now|order now|request quote)/i,
+    /^(facebook|twitter|instagram|linkedin|youtube|pinterest|social)/i,
+    /^(cookie|privacy|terms|conditions|policy|legal|copyright)/i,
+    /^(footer|header|sidebar|menu|nav|navigation)$/i,
   ];
   
   return !invalidPatterns.some(p => p.test(trimmedName));
@@ -934,6 +996,59 @@ async function crawlFallback(url: string, firecrawlKey: string, limit: number = 
   }
 }
 
+// Link-scrape fallback: scrape a page and extract internal links when map/crawl fail
+async function linkScrapeFallback(url: string, firecrawlKey: string, baseUrl: string): Promise<string[]> {
+  console.log(`Using link-scrape fallback for ${url}`);
+  
+  try {
+    const scrapeResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['html', 'links'],
+        onlyMainContent: false,
+      }),
+    }, 2, 3000);
+    
+    const scrapeData = await scrapeResponse.json();
+    const links: string[] = [];
+    
+    if (scrapeResponse.ok && scrapeData.data) {
+      // Get links directly from response
+      if (scrapeData.data.links && Array.isArray(scrapeData.data.links)) {
+        links.push(...scrapeData.data.links);
+      }
+      
+      // Also extract links from HTML if available
+      if (scrapeData.data.html) {
+        const hrefPattern = /href=["']([^"']+)["']/gi;
+        for (const match of scrapeData.data.html.matchAll(hrefPattern)) {
+          const href = match[1];
+          if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:')) {
+            // Resolve relative URLs
+            if (href.startsWith('/')) {
+              links.push(baseUrl + href);
+            } else if (href.startsWith('http')) {
+              links.push(href);
+            }
+          }
+        }
+      }
+    }
+    
+    const uniqueLinks = [...new Set(links)];
+    console.log(`Link-scrape fallback found ${uniqueLinks.length} URLs`);
+    return uniqueLinks;
+  } catch (error) {
+    console.error('Link-scrape fallback error:', error);
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -1088,6 +1203,14 @@ Deno.serve(async (req) => {
       allUrls = allUrls.filter(u => {
         try {
           const parsed = new URL(u);
+          // Apply sub-brand exclude patterns first
+          if (config.subBrandExcludePatterns?.some(p => p.test(u))) {
+            return false;
+          }
+          // Also apply regular exclude patterns
+          if (config.excludeUrlPatterns?.some(p => p.test(u))) {
+            return false;
+          }
           return parsed.pathname.startsWith(pathPrefix) || 
                  config.productUrlPatterns?.some(p => p.test(u));
         } catch {
@@ -1099,8 +1222,35 @@ Deno.serve(async (req) => {
 
     // Step 2: Filter to product-related URLs
     const requireAustralian = !isAustraliaSite;
-    const productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, requireAustralian);
+    let productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, requireAustralian);
     console.log(`Filtered to ${productUrls.length} product-related URLs (AU filter: ${requireAustralian})`);
+    
+    // Fallback: If no product URLs found, try link-scrape fallback
+    if (productUrls.length === 0) {
+      console.log('No product URLs found, trying link-scrape fallback...');
+      const fallbackLinks = await linkScrapeFallback(url, firecrawlKey, baseUrl);
+      if (fallbackLinks.length > 0) {
+        productUrls = filterProductUrls(fallbackLinks, baseUrl, supplierSlug, requireAustralian);
+        console.log(`Link-scrape fallback yielded ${productUrls.length} product URLs`);
+      }
+    }
+    
+    // Fallback: Use seedUrls if configured and still no product URLs
+    if (productUrls.length === 0 && config.seedUrls && config.seedUrls.length > 0) {
+      console.log(`Using seedUrls fallback: ${config.seedUrls.join(', ')}`);
+      for (const seedPath of config.seedUrls) {
+        const seedUrl = seedPath.startsWith('http') ? seedPath : baseUrl + seedPath;
+        if (!productUrls.includes(seedUrl)) {
+          productUrls.push(seedUrl);
+        }
+      }
+    }
+    
+    // Ultimate fallback: scrape the original URL directly
+    if (productUrls.length === 0) {
+      console.log('No product URLs found, falling back to original URL');
+      productUrls = [url];
+    }
     
     const maxPages = options?.maxPages || 50;
     const urlsToScrape = productUrls.slice(0, maxPages);
