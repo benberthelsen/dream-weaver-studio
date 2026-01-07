@@ -41,6 +41,7 @@ interface SupplierConfig {
   subBrands?: Record<string, SubBrandConfig>;
   seedUrls?: string[];  // Fallback URLs to scrape when no product URLs found
   subBrandExcludePatterns?: RegExp[];  // Extra patterns to exclude for sub-brands
+  requireBrandInUrl?: boolean;  // For sub-brands: require the brand name to appear in URL
 }
 
 const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
@@ -58,9 +59,10 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     rootDomain: 'https://www.laminex.com.au',
     productUrlPatterns: [
       /\/products\/benchtops\/essastone/,
-      /\/essastone\/colours/,
-      /\/browse\/.*essastone/,
-      /\/b\/.*essastone/i,
+      /\/essastone\/colours/i,
+      /\/essastone\/collection/i,
+      /brand=essastone/i,
+      /\bessastone\b.*colour/i,
     ],
     excludeUrlPatterns: [
       /\/article\//,
@@ -70,18 +72,27 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/inspiration\//,
       /\/case-study\//,
       /\/sustainability\//,
+      // CRITICAL: Exclude generic Laminex browse pages that don't have brand filter
+      /\/browse\/product-type$/,
+      /\/browse\/colour-texture$/,  
+      /\/browse\/product-application$/,
+      /\/next-generation-woodgrains/,
+      /\/laminex-readyfit-benchtops/,
+      /\/brands\/laminex\//,
     ],
     subBrandExcludePatterns: [
       /\/article\//,
       /\/news\//,
       /\/insights\//,
       /\/blog\//,
+      // For sub-brands, require "essastone" to appear somewhere in the URL
     ],
     skipAuFilter: true,
     seedUrls: [
       '/products/benchtops/essastone',
-      '/browse/colour-texture?brand=essastone',
     ],
+    // Special flag: for sub-brand filtering, require brand name in URL
+    requireBrandInUrl: true,
   },
   'forestone': {
     skipAuFilter: true,
@@ -255,9 +266,92 @@ function isValidProductName(name: string): boolean {
     /^(facebook|twitter|instagram|linkedin|youtube|pinterest|social)/i,
     /^(cookie|privacy|terms|conditions|policy|legal|copyright)/i,
     /^(footer|header|sidebar|menu|nav|navigation)$/i,
+    
+    // YouTube/video junk
+    /^(full\s*screen|unavailable|watch\s*on\s*youtube|play\s*video)/i,
+    /^[A-Z][a-z]+\s+(AU|US|UK|NZ)$/,  // "Laminex AU", "Brand UK" etc.
+    
+    // Browse/category labels specific to Laminex
+    /^(browse\s*products|browse\s*by|view\s*range|our\s*range)/i,
+    /^(whites?\s*&?\s*neutrals?|minerals?|woodgrains?|accents?|solids?)$/i,
+    
+    // Generic product TYPE names (categories, not colors)
+    /^(adhesive|adhesives)$/i,
+    /^(aquapanel|aquapanel\s*sheets?)$/i,
+    /^(architectural\s*panels?)$/i,
+    /^(cabinetry\s*panels?)$/i,
+    /^(compact\s*laminate)$/i,
+    /^(composite\s*solid\s*surface)$/i,
+    /^(craftwood)$/i,
+    /^(decorated\s*mdf)$/i,
+    /^(decorated\s*panels?)$/i,
+    /^(decorated\s*particleboard)$/i,
+    /^(easyfit\s*benchtop)$/i,
+    /^(edging)$/i,
+    /^(fireguard)$/i,
+    /^(formica)$/i,
+    /^(himacs)$/i,
+    /^(laminate\s*hpl)$/i,
+    /^(low\s*pressure\s*laminate)$/i,
+    /^(mdf)$/i,
+    /^(metaline)$/i,
+    /^(particleboard)$/i,
+    /^(plywood)$/i,
+    /^(pvc\s*panels?)$/i,
+    /^(raw\s*mdf)$/i,
+    /^(sinks?|basins?)$/i,
+    /^(wall\s*panels?)$/i,
+    /^(white\s*board|whiteboard)$/i,
+    /^(substrate)$/i,
+    /^(flooring)$/i,
+    /^(mouldings?)$/i,
+    /^(sheets?)$/i,
+    /^(panels?)$/i,
+    /^(accessories)$/i,
+    /^(benchtops?)$/i,
   ];
   
+  // Also reject if it looks like a generic category name
+  if (isGenericCategoryName(trimmedName)) {
+    return false;
+  }
+  
   return !invalidPatterns.some(p => p.test(trimmedName));
+}
+
+// Detect generic category/product type names that aren't actual color/product names
+function isGenericCategoryName(name: string): boolean {
+  const lowerName = name.toLowerCase().trim();
+  
+  const genericCategoryNames = [
+    'adhesive', 'adhesives', 'aquapanel', 'architectural panels', 'cabinetry panel',
+    'compact laminate', 'composite solid surface', 'craftwood', 
+    'decorated mdf', 'decorated panel', 'decorated particleboard',
+    'easyfit benchtop', 'edging', 'fireguard', 'formica',
+    'himacs', 'laminate hpl', 'low pressure laminate', 'mdf',
+    'metaline', 'particleboard', 'plywood', 'pvc panels', 'raw mdf',
+    'sinks', 'basins', 'wall panel', 'white board', 'whiteboard',
+    'substrate', 'flooring', 'mouldings', 'sheets', 'panels',
+    'accessories', 'benchtops', 'splashbacks', 'doors', 'carcass',
+    // Laminex-specific product types that appear as "names"
+    'readyfit benchtops', 'laminex readyfit', 'next generation woodgrains',
+    'product type', 'product application', 'colour texture',
+  ];
+  
+  // Exact match
+  if (genericCategoryNames.includes(lowerName)) {
+    return true;
+  }
+  
+  // Check if name is just a product type with no color qualifier
+  // e.g. "Laminate HPL" is generic, "White Oak Laminate" is not
+  for (const category of genericCategoryNames) {
+    if (lowerName === category || lowerName === category + 's') {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // ============================================================================
@@ -1211,6 +1305,16 @@ Deno.serve(async (req) => {
           if (config.excludeUrlPatterns?.some(p => p.test(u))) {
             return false;
           }
+          
+          // For sub-brands that require brand name in URL (e.g., essastone)
+          // Only include URLs that explicitly contain the supplier slug
+          if (config.requireBrandInUrl) {
+            const urlLower = u.toLowerCase();
+            if (!urlLower.includes(supplierSlug) && !urlLower.includes('brand=' + supplierSlug)) {
+              return false;
+            }
+          }
+          
           return parsed.pathname.startsWith(pathPrefix) || 
                  config.productUrlPatterns?.some(p => p.test(u));
         } catch {
