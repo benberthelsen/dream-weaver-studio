@@ -1465,6 +1465,23 @@ Deno.serve(async (req) => {
       }
     }
     
+    // For sub-brands with requireBrandInUrl, ALWAYS scrape the original URL first
+    // since it likely contains all products filtered by brand (e.g., ?brand=Essastone)
+    if (config.requireBrandInUrl) {
+      console.log(`Sub-brand detected (${supplierSlug}), prioritizing original URL: ${url}`);
+      // Filter productUrls to only those containing the brand name
+      productUrls = productUrls.filter(u => {
+        const urlLower = u.toLowerCase();
+        return urlLower.includes(supplierSlug) || urlLower.includes('brand=' + supplierSlug);
+      });
+      console.log(`After brand filter: ${productUrls.length} URLs contain brand name`);
+      
+      // Always include the original URL at the beginning
+      if (!productUrls.includes(url)) {
+        productUrls.unshift(url);
+      }
+    }
+    
     // Fallback: Use seedUrls if configured and still no product URLs
     if (productUrls.length === 0 && config.seedUrls && config.seedUrls.length > 0) {
       console.log(`Using seedUrls fallback: ${config.seedUrls.join(', ')}`);
