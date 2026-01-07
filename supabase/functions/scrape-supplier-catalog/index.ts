@@ -416,21 +416,18 @@ function isGenericCategoryName(name: string): boolean {
 // ============================================================================
 
 function isErrorPage(html: string): { isError: boolean; reason: string } {
-  // Common error page patterns
+  // Common error page patterns - must be SPECIFIC to avoid false positives
   const errorPatterns = [
     { pattern: /class="[^"]*page-?not-?found[^"]*"/i, reason: 'Page not found (404)' },
     { pattern: /class="[^"]*error-?page[^"]*"/i, reason: 'Error page detected' },
     { pattern: /class="[^"]*error-?404[^"]*"/i, reason: 'Error 404 page' },
-    { pattern: /sorry.*(?:page|cannot|couldn't).*(?:found|exist|available)/i, reason: 'Content not found' },
-    { pattern: /page.*(?:doesn't|does not|cannot).*exist/i, reason: 'Page does not exist' },
     { pattern: /taken a wrong turn/i, reason: 'Wrong turn page (Smartstone)' },
     { pattern: /requested page cannot be found/i, reason: 'Requested page not found' },
-    { pattern: /page.*could.*not.*(?:be )?loaded/i, reason: 'Page load failed' },
-    { pattern: /system.*(?:under )?maintenance/i, reason: 'Site under maintenance' },
-    { pattern: /technical.*error/i, reason: 'Technical error' },
-    { pattern: /<title>[^<]*(?:404|not found|error)[^<]*<\/title>/i, reason: '404 title detected' },
-    { pattern: /class="[^"]*wpb-js-composer[^"]*"[^>]*>.*class="[^"]*error404/i, reason: 'WordPress 404 page' },
+    { pattern: /<title>[^<]*(?:404|not found|page error)[^<]*<\/title>/i, reason: '404 title detected' },
     { pattern: /<body[^>]*class="[^"]*error404[^"]*"/i, reason: 'WordPress error404 body class' },
+    // Very specific maintenance page patterns (NOT general product pages mentioning maintenance)
+    { pattern: /<h1[^>]*>.*(?:under maintenance|site maintenance|scheduled maintenance).*<\/h1>/i, reason: 'Maintenance page' },
+    { pattern: /class="[^"]*maintenance-page[^"]*"/i, reason: 'Maintenance page class' },
   ];
   
   for (const { pattern, reason } of errorPatterns) {
@@ -440,8 +437,9 @@ function isErrorPage(html: string): { isError: boolean; reason: string } {
   }
   
   // Check if page has very little content (likely an error page)
+  // But be more generous - 100 chars is enough for small error pages
   const textContent = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (textContent.length < 200) {
+  if (textContent.length < 100) {
     return { isError: true, reason: 'Page has very little content' };
   }
   
