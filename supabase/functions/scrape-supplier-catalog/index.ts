@@ -187,27 +187,29 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   },
   // NEW SUPPLIER CONFIGS
   'smartstone': {
-    productUrlPatterns: [/\/stone-benchtops\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//],
+    productUrlPatterns: [/\/stones\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//],
     excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/inspiration/, /\/favourites/, /\/find-/, /\/professional/],
     skipAuFilter: true,
+    seedUrls: ['/stones/'],  // Nuxt.js site - use /stones/ endpoint
   },
   'navurban': {
     productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//, /\/timber\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/],
-    seedUrls: ['/navurban/'],  // Single-page catalog - scrape main page
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/],
+    seedUrls: ['/navurban/'],  // Single-page catalog - scrape main page directly
   },
   'lithostone': {
-    productUrlPatterns: [/\/products\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/],
+    productUrlPatterns: [/\/lithostone\//, /\/compac\//, /\/sintered-stone\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/safety-facts/, /\/gallery\//],
+    seedUrls: ['/lithostone/', '/compac-outdoor/', '/sintered-stone/'],  // Multiple product ranges
   },
   'ydl': {
     productUrlPatterns: [/\/products\//, /\/colours\//, /\/collection\//, /\/range\//, /\/quartz\//],
     excludeUrlPatterns: [/\/contact/, /\/about/],
   },
   'lavistone': {
-    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//, /\/collection\//, /\/quartz\//, /\/our-range\//, /\/product-category\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/],
-    seedUrls: ['/our-range/', '/products/'],  // WooCommerce-style - use archive pages
+    productUrlPatterns: [/\/our-range\//, /\/product\//, /\/product-category\//, /\/quartz\//, /\/natural-stone\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/my-account/],
+    seedUrls: ['/our-range/'],  // WooCommerce - use main product archive page
   },
   'quantum-quartz': {
     productUrlPatterns: [/\/colours\//, /\/collection\//, /\/quartz\//, /\/products\//],
@@ -407,6 +409,43 @@ function isGenericCategoryName(name: string): boolean {
   }
   
   return false;
+}
+
+// ============================================================================
+// ERROR PAGE DETECTION - Skip 404s and maintenance pages
+// ============================================================================
+
+function isErrorPage(html: string): { isError: boolean; reason: string } {
+  // Common error page patterns
+  const errorPatterns = [
+    { pattern: /class="[^"]*page-?not-?found[^"]*"/i, reason: 'Page not found (404)' },
+    { pattern: /class="[^"]*error-?page[^"]*"/i, reason: 'Error page detected' },
+    { pattern: /class="[^"]*error-?404[^"]*"/i, reason: 'Error 404 page' },
+    { pattern: /sorry.*(?:page|cannot|couldn't).*(?:found|exist|available)/i, reason: 'Content not found' },
+    { pattern: /page.*(?:doesn't|does not|cannot).*exist/i, reason: 'Page does not exist' },
+    { pattern: /taken a wrong turn/i, reason: 'Wrong turn page (Smartstone)' },
+    { pattern: /requested page cannot be found/i, reason: 'Requested page not found' },
+    { pattern: /page.*could.*not.*(?:be )?loaded/i, reason: 'Page load failed' },
+    { pattern: /system.*(?:under )?maintenance/i, reason: 'Site under maintenance' },
+    { pattern: /technical.*error/i, reason: 'Technical error' },
+    { pattern: /<title>[^<]*(?:404|not found|error)[^<]*<\/title>/i, reason: '404 title detected' },
+    { pattern: /class="[^"]*wpb-js-composer[^"]*"[^>]*>.*class="[^"]*error404/i, reason: 'WordPress 404 page' },
+    { pattern: /<body[^>]*class="[^"]*error404[^"]*"/i, reason: 'WordPress error404 body class' },
+  ];
+  
+  for (const { pattern, reason } of errorPatterns) {
+    if (pattern.test(html)) {
+      return { isError: true, reason };
+    }
+  }
+  
+  // Check if page has very little content (likely an error page)
+  const textContent = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (textContent.length < 200) {
+    return { isError: true, reason: 'Page has very little content' };
+  }
+  
+  return { isError: false, reason: '' };
 }
 
 // ============================================================================
@@ -904,27 +943,61 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     }
   }
   
-  // Navurban patterns
+  // Navurban patterns - unique single-page catalog with background images
   if (supplierSlug === 'navurban') {
-    const navurbanPatterns = [
-      /<div[^>]*class="[^"]*(?:product|colour|timber|range)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?/gi,
-      /<a[^>]*href="[^"]*navurban[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
-    ];
-    for (const pattern of navurbanPatterns) {
-      for (const match of html.matchAll(pattern)) {
-        if (match[1] && match[2]) {
-          addProduct(match[2], match[1]);
+    // Pattern 1: div.sample with background-image and h3.product-title
+    const navurbanSamplePattern = /<div[^>]*id="([^"]+)"[^>]*class="[^"]*sample[^"]*"[^>]*>[\s\S]*?style="background-image:\s*url\(([^)]+)\)"[\s\S]*?<(?:h3|p)[^>]*class="[^"]*product-title[^"]*"[^>]*>\s*([^<]+)/gi;
+    for (const match of html.matchAll(navurbanSamplePattern)) {
+      const imageUrl = match[2].replace(/['"]/g, '');
+      const name = match[3].trim();
+      if (imageUrl && name && !name.includes('NAVURBAN')) {
+        addProduct(name, imageUrl);
+      }
+    }
+    
+    // Pattern 2: data-main-image attribute with product-title
+    const dataImagePattern = /data-main-image="([^"]+)"[\s\S]*?<(?:h3|p)[^>]*class="[^"]*product-title[^"]*"[^>]*>\s*([^<]+)/gi;
+    for (const match of html.matchAll(dataImagePattern)) {
+      const name = match[2].trim();
+      if (match[1] && name && !name.includes('NAVURBAN')) {
+        addProduct(name, match[1]);
+      }
+    }
+  }
+  
+  // Lavistone WooCommerce/Elementor patterns
+  if (supplierSlug === 'lavistone') {
+    // Pattern 1: uc_post_grid_style_one_item with img and uc_title
+    const lavistonPattern = /<div[^>]*class="[^"]*uc_post_grid_style_one_item[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"[\s\S]*?<div[^>]*class="[^"]*uc_title[^"]*"[^>]*>\s*<a[^>]*>([^<]+)/gi;
+    for (const match of html.matchAll(lavistonPattern)) {
+      const imageUrl = match[1];
+      const name = match[3]?.trim() || match[2]?.trim();
+      if (imageUrl && name) {
+        addProduct(name, imageUrl);
+      }
+    }
+    
+    // Pattern 2: Fallback to simpler WooCommerce product structure
+    const wooPattern = /<div[^>]*class="[^"]*uc_post_image[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"/gi;
+    for (const match of html.matchAll(wooPattern)) {
+      if (match[1] && match[2]) {
+        // Clean up alt text which often contains "Lavistone Natural Stone" suffix
+        let name = match[2].replace(/\s*Lavistone\s*Natural\s*Stone\s*\d*/gi, '').trim();
+        if (name) {
+          addProduct(name, match[1]);
         }
       }
     }
   }
   
-  // Stone supplier patterns (Lithostone, YDL, Lavistone, Quantum Quartz, WK Stone)
-  if (['lithostone', 'ydl', 'lavistone', 'quantum-quartz', 'wk-stone'].includes(supplierSlug || '')) {
+  // Stone supplier patterns (Lithostone, YDL, Quantum Quartz, WK Stone)
+  if (['lithostone', 'ydl', 'quantum-quartz', 'wk-stone'].includes(supplierSlug || '')) {
     const stonePatterns = [
       /<div[^>]*class="[^"]*(?:product|colour|stone|quartz|swatch|collection)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?[\s\S]*?<(?:h[2-6]|span|p|div)[^>]*>([^<]{2,60})</gi,
       /<a[^>]*href="[^"]*(?:product|colour|stone)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
       /<figure[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+      // WPBakery/Visual Composer pattern (used by Lithostone)
+      /<figure[^>]*class="[^"]*vc_figure[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*(?:alt="([^"]*)")?[^>]*title="([^"]+)"/gi,
     ];
     for (const pattern of stonePatterns) {
       for (const match of html.matchAll(pattern)) {
@@ -1455,8 +1528,24 @@ Deno.serve(async (req) => {
         const scrapeData = await scrapeResponse.json();
         
         if (scrapeResponse.ok && scrapeData.data?.html) {
-          const products = extractProductsFromHtml(scrapeData.data.html, pageUrl, baseUrl, supplierSlug);
+          const html = scrapeData.data.html;
+          
+          // Check if this is an error page
+          const errorCheck = isErrorPage(html);
+          if (errorCheck.isError) {
+            console.log(`  Skipping error page ${pageUrl}: ${errorCheck.reason}`);
+            failedUrls.push(pageUrl);
+            continue;
+          }
+          
+          const products = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
           console.log(`  Found ${products.length} products on ${pageUrl}`);
+          
+          // Debug: if 0 products found, log some context
+          if (products.length === 0) {
+            console.log(`  DEBUG: HTML length: ${html.length}, supplier: ${supplierSlug}`);
+          }
+          
           allProducts.push(...products);
           scrapedUrls.push(pageUrl);
         } else {
