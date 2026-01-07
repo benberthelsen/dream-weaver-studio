@@ -20,6 +20,15 @@ interface ScrapedProduct {
   usage_types?: string[];
 }
 
+// Sub-brand configuration for suppliers with multiple product lines
+interface SubBrandConfig {
+  urlPattern: RegExp;
+  namePattern?: RegExp;
+  product_type: string;
+  usage_types: string[];
+  thickness?: string;
+}
+
 // Supplier-specific configuration
 interface SupplierConfig {
   productUrlPatterns?: RegExp[];
@@ -29,16 +38,17 @@ interface SupplierConfig {
   rootDomain?: string;
   useCrawlFallback?: boolean;
   imageSelectors?: string[];
+  subBrands?: Record<string, SubBrandConfig>;
 }
 
 const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   'polytec': {
     productUrlPatterns: [/\/colours\//, /\/decors?\//, /\/ravine\//, /\/melamine\//, /\/laminate\//],
-    excludeUrlPatterns: [/\/stockists/, /\/contact/, /\/news/, /\/sustainability/],
+    excludeUrlPatterns: [/\/stockists/, /\/contact/, /\/news/, /\/sustainability/, /\/moodboard/, /\/sample/],
   },
   'laminex': {
     productUrlPatterns: [/\/products\/.*\/colours/, /\/decorative-surfaces/, /\/colours\//, /\/benchtops\//, /\/essastone\//, /\/minerals\//],
-    excludeUrlPatterns: [/\/location\//, /\/find-a-retailer/, /\/contact/, /\/sustainability/, /\/inspirations\//],
+    excludeUrlPatterns: [/\/location\//, /\/find-a-retailer/, /\/contact/, /\/sustainability/, /\/inspirations\//, /\/sample/],
     mapFromRoot: false,
   },
   'essastone': {
@@ -47,9 +57,37 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     productUrlPatterns: [/\/essastone\/colours/, /\/essastone.*colour/],
   },
   'forestone': {
-    skipAuFilter: true, // Australian company with non-.com.au domain
-    productUrlPatterns: [/\/products\//, /\/our-brands\//, /\/egger\//, /\/meganite\//, /\/range\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/sustainability/],
+    skipAuFilter: true,
+    productUrlPatterns: [/\/products\//, /\/our-brands\//, /\/egger\//, /\/meganite\//, /\/range\//, /\/designer-ply\//, /\/antegra\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/sustainability/, /\/flooring\//, /\/structural\//, /\/marine\//],
+    subBrands: {
+      'meganite': {
+        urlPattern: /meganite/i,
+        namePattern: /meganite/i,
+        product_type: 'solid_surface',
+        usage_types: ['bench_tops'],
+        thickness: '12mm',
+      },
+      'egger': {
+        urlPattern: /egger|eurodekor|perfectsense/i,
+        namePattern: /^[UH]\d{3,4}|EPD|EHD|ST\d{2}/,
+        product_type: 'board',
+        usage_types: ['doors', 'panels'],
+        thickness: '18mm',
+      },
+      'designer-ply': {
+        urlPattern: /designer-ply/i,
+        namePattern: /ply|plywood/i,
+        product_type: 'veneer',
+        usage_types: ['doors', 'panels'],
+      },
+      'antegra': {
+        urlPattern: /antegra/i,
+        product_type: 'compact_laminate',
+        usage_types: ['bench_tops', 'kicks'],
+        thickness: '13mm',
+      },
+    },
   },
   'designerone': {
     skipAuFilter: true,
@@ -84,7 +122,98 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   },
 };
 
-// Detect product type, thickness, and usage_types based on URL and product info
+// ============================================================================
+// PRODUCT NAME VALIDATION - Filters out junk entries
+// ============================================================================
+
+function isValidProductName(name: string): boolean {
+  if (!name || typeof name !== 'string') return false;
+  
+  const trimmedName = name.trim();
+  
+  // Reject empty or extreme length names
+  if (trimmedName.length < 2 || trimmedName.length > 100) return false;
+  
+  const invalidPatterns = [
+    // Image filenames
+    /\.jpg$/i, /\.jpeg$/i, /\.png$/i, /\.webp$/i, /\.gif$/i, /\.svg$/i,
+    // URLs as names
+    /^https?:\/\//i,
+    // UI elements and buttons
+    /^(quick view|more info|add to|find out|view all|learn more|see more|click here|read more)/i,
+    /^(download|upload|submit|cancel|close|open|back|next|previous|shop now)/i,
+    // Category/section labels (not products)
+    /^(moodboard|sustainability|bathrooms|kitchens|laundry|outdoor|interior|exterior)$/i,
+    /^(accents|minerals|woodgrains|whites|darks|neutrals|colours|colors|all colours)$/i,
+    /^(featured|popular|new|trending|best seller|on sale|new arrival)$/i,
+    // Navigation items
+    /^(home|about|contact|menu|search|filter|sort|category|categories|browse)$/i,
+    // Too generic
+    /^(product|item|image|photo|picture|sample|swatch|view|details)$/i,
+    // Promotional text
+    /^(free|save|discount|offer|deal|limited|exclusive|special)/i,
+    // Contains only numbers or special chars
+    /^[\d\s\-_.]+$/,
+    // Looks like a code without sufficient context (too short)
+    /^[A-Z]{1,2}\d{1,2}$/,
+    // Common junk patterns from scraping
+    /^(loading|please wait|error|undefined|null|NaN)$/i,
+    /^\d+x\d+$/i,  // Dimensions like "1200x800"
+    /^(prev|next|left|right|up|down|arrow)$/i,
+  ];
+  
+  return !invalidPatterns.some(p => p.test(trimmedName));
+}
+
+// ============================================================================
+// MATERIAL DETECTION FROM PRODUCT NAME
+// ============================================================================
+
+function detectMaterialFromName(name: string): string | null {
+  const lowerName = name.toLowerCase();
+  
+  // Timber/Wood species
+  if (/\b(oak|walnut|birch|beech|ash|elm|maple|cherry|pine|cedar|teak|mahogany|hoop\s*pine)\b/.test(lowerName)) {
+    return 'Timber';
+  }
+  
+  // Stone types
+  if (/\b(marble|granite|quartz|onyx|travertine|slate|limestone|calacatta|carrara|statuario)\b/.test(lowerName)) {
+    return 'Stone';
+  }
+  
+  // Concrete
+  if (/\b(concrete|cement|terrazzo)\b/.test(lowerName)) {
+    return 'Concrete';
+  }
+  
+  // Laminate
+  if (/\b(laminate|hpl|melamine|formica)\b/.test(lowerName)) {
+    return 'Laminate';
+  }
+  
+  // Veneer
+  if (/\b(veneer)\b/.test(lowerName)) {
+    return 'Veneer';
+  }
+  
+  // Solid Surface
+  if (/\b(acrylic|solid\s*surface|corian|meganite|hi-macs|staron)\b/.test(lowerName)) {
+    return 'Solid Surface';
+  }
+  
+  // Metal
+  if (/\b(steel|aluminium|aluminum|copper|brass|bronze|metal|stainless|brushed\s*metal)\b/.test(lowerName)) {
+    return 'Metal';
+  }
+  
+  return null;
+}
+
+// ============================================================================
+// ENHANCED PRODUCT CLASSIFICATION
+// ============================================================================
+
 function detectProductClassification(
   pageUrl: string, 
   productName: string, 
@@ -94,6 +223,59 @@ function detectProductClassification(
   const lowerName = productName.toLowerCase();
   const supplierSlug = supplier.slug?.toLowerCase() || '';
   const supplierName = supplier.name?.toLowerCase() || '';
+
+  // Get supplier config
+  const config = SUPPLIER_CONFIGS[supplierSlug];
+
+  // Step 1: Check for sub-brand matches first (most specific)
+  if (config?.subBrands) {
+    for (const [, brandConfig] of Object.entries(config.subBrands)) {
+      const urlMatch = brandConfig.urlPattern.test(lowerUrl);
+      const nameMatch = brandConfig.namePattern ? brandConfig.namePattern.test(productName) : false;
+      
+      if (urlMatch || nameMatch) {
+        return {
+          product_type: brandConfig.product_type,
+          thickness: brandConfig.thickness || null,
+          usage_types: brandConfig.usage_types,
+        };
+      }
+    }
+  }
+
+  // Step 2: Product name-based classification (high priority)
+  
+  // Plywood/Ply detection - always carcass
+  if (/\b(plywood|hoop\s*pine\s*ply|birch\s*ply|marine\s*ply)\b/.test(lowerName)) {
+    return { product_type: 'board', thickness: '18mm', usage_types: ['carcass'] };
+  }
+  
+  // EGGER code detection (e.g., U999, H1234, EPD, EHD, ST19)
+  if (/^[UH]\d{3,4}/.test(productName) || /\bEPD\b|\bEHD\b|\bST\d{2}\b/.test(productName)) {
+    return { product_type: 'board', thickness: '18mm', usage_types: ['doors', 'panels'] };
+  }
+  
+  // Solid surface keywords
+  if (/\b(solid\s*surface|acrylic\s*surface|corian|meganite|hi-macs|staron)\b/.test(lowerName)) {
+    return { product_type: 'solid_surface', thickness: '12mm', usage_types: ['bench_tops'] };
+  }
+  
+  // Compact laminate keywords
+  if (/\b(compact\s*laminate|hpl|high\s*pressure\s*laminate)\b/.test(lowerName)) {
+    return { product_type: 'compact_laminate', thickness: '13mm', usage_types: ['bench_tops', 'kicks'] };
+  }
+  
+  // Veneer keywords
+  if (/\b(veneer|natural\s*veneer|timber\s*veneer|reconstituted\s*veneer)\b/.test(lowerName)) {
+    return { product_type: 'veneer', thickness: null, usage_types: ['doors', 'panels'] };
+  }
+  
+  // Engineered stone keywords
+  if (/\b(quartz|engineered\s*stone)\b/.test(lowerName)) {
+    return { product_type: 'engineered_stone', thickness: '20mm', usage_types: ['bench_tops'] };
+  }
+
+  // Step 3: Supplier-specific classification
 
   // Polytec detection
   if (supplierSlug === 'polytec' || supplierName.includes('polytec')) {
@@ -109,12 +291,16 @@ function detectProductClassification(
     if (lowerUrl.includes('carcass')) {
       return { product_type: 'board', thickness: '16mm', usage_types: ['carcass'] };
     }
+    // Default for Polytec - decorative boards
+    if (/ravine|woodmatt|natural\s*oak|prime\s*oak|legato|ultraglaze|createc/.test(lowerName)) {
+      return { product_type: 'board', thickness: '18mm', usage_types: ['doors', 'panels'] };
+    }
   }
 
   // Laminex detection
   if (supplierSlug === 'laminex' || supplierName.includes('laminex')) {
     if (lowerUrl.includes('essastone') || lowerUrl.includes('minerals')) {
-      return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+      return { product_type: 'engineered_stone', thickness: '20mm', usage_types: ['bench_tops'] };
     }
     if (lowerUrl.includes('benchtop') || lowerUrl.includes('compact')) {
       return { product_type: 'compact_laminate', thickness: null, usage_types: ['bench_tops'] };
@@ -132,22 +318,22 @@ function detectProductClassification(
 
   // Essastone detection
   if (supplierSlug === 'essastone' || lowerUrl.includes('essastone')) {
-    return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+    return { product_type: 'engineered_stone', thickness: '20mm', usage_types: ['bench_tops'] };
   }
 
   // ForestOne / EGGER detection
   if (supplierSlug === 'forestone' || supplierSlug === 'egger' || 
       supplierName.includes('forest') || supplierName.includes('egger')) {
     if (lowerName.includes('meganite') || lowerUrl.includes('solid-surface') || lowerUrl.includes('meganite')) {
-      return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+      return { product_type: 'solid_surface', thickness: '12mm', usage_types: ['bench_tops'] };
     }
     if (lowerUrl.includes('laminate') || lowerUrl.includes('hpl')) {
       return { product_type: 'laminate', thickness: null, usage_types: ['bench_tops', 'kicks'] };
     }
     if (lowerUrl.includes('compact')) {
-      return { product_type: 'compact_laminate', thickness: null, usage_types: ['bench_tops'] };
+      return { product_type: 'compact_laminate', thickness: '13mm', usage_types: ['bench_tops'] };
     }
-    if (lowerUrl.includes('veneer')) {
+    if (lowerUrl.includes('veneer') || lowerUrl.includes('designer-ply')) {
       return { product_type: 'veneer', thickness: null, usage_types: ['doors', 'panels'] };
     }
     if (lowerUrl.includes('eurodekor') || lowerUrl.includes('perfectsense') || lowerUrl.includes('board')) {
@@ -166,34 +352,63 @@ function detectProductClassification(
   }
 
   // Stone/quartz suppliers - bench tops only
-  if (supplierSlug === 'caesarstone' || supplierSlug === 'dekton' || supplierSlug === 'silestone' ||
-      supplierName.includes('caesarstone') || supplierName.includes('stone')) {
-    return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+  if (supplierSlug === 'caesarstone') {
+    return { product_type: 'engineered_stone', thickness: '20mm', usage_types: ['bench_tops'] };
+  }
+  if (supplierSlug === 'dekton') {
+    return { product_type: 'ultra_compact', thickness: '12mm', usage_types: ['bench_tops', 'splashbacks'] };
+  }
+  if (supplierSlug === 'silestone') {
+    return { product_type: 'quartz', thickness: '20mm', usage_types: ['bench_tops'] };
   }
 
-  // Material-based detection from product name
-  if (lowerName.includes('laminate') || lowerName.includes('hpl')) {
+  // Step 4: Material-based detection from product name
+  const material = detectMaterialFromName(productName);
+  if (material === 'Stone') {
+    return { product_type: 'engineered_stone', thickness: '20mm', usage_types: ['bench_tops'] };
+  }
+  if (material === 'Timber') {
+    return { product_type: 'board', thickness: '18mm', usage_types: ['doors', 'panels'] };
+  }
+  if (material === 'Laminate') {
     return { product_type: 'laminate', thickness: null, usage_types: ['bench_tops', 'kicks'] };
   }
-  if (lowerName.includes('veneer')) {
+  if (material === 'Veneer') {
     return { product_type: 'veneer', thickness: null, usage_types: ['doors', 'panels'] };
   }
-  if (lowerName.includes('solid surface') || lowerName.includes('acrylic')) {
-    return { product_type: 'solid_surface', thickness: null, usage_types: ['bench_tops'] };
+  if (material === 'Solid Surface') {
+    return { product_type: 'solid_surface', thickness: '12mm', usage_types: ['bench_tops'] };
   }
 
-  // Default based on supplier category
+  // Step 5: URL-based fallbacks
+  if (/\/benchtop|\/bench-top|\/worktop/.test(lowerUrl)) {
+    return { product_type: 'laminate', thickness: null, usage_types: ['bench_tops'] };
+  }
+  if (/\/door|\/cabinet|\/panel/.test(lowerUrl)) {
+    return { product_type: 'board', thickness: '18mm', usage_types: ['doors', 'panels'] };
+  }
+  if (/\/splashback|\/splash-back/.test(lowerUrl)) {
+    return { product_type: 'laminate', thickness: null, usage_types: ['splashbacks'] };
+  }
+  if (/\/kick|\/plinth/.test(lowerUrl)) {
+    return { product_type: 'laminate', thickness: null, usage_types: ['kicks'] };
+  }
+  if (/\/carcass/.test(lowerUrl)) {
+    return { product_type: 'board', thickness: '16mm', usage_types: ['carcass'] };
+  }
+
+  // Step 6: Default based on supplier category
   if (supplier.category === 'bench_tops') {
-    return { product_type: 'board', thickness: null, usage_types: ['bench_tops'] };
+    return { product_type: 'laminate', thickness: null, usage_types: ['bench_tops'] };
   }
   if (supplier.category === 'doors_panels') {
-    return { product_type: 'board', thickness: null, usage_types: ['doors', 'panels'] };
+    return { product_type: 'board', thickness: '18mm', usage_types: ['doors', 'panels'] };
   }
   if (supplier.category === 'hardware') {
     return { product_type: 'hardware', thickness: null, usage_types: [] };
   }
 
-  // Ultimate default
+  // Ultimate default - decorative board
   return { product_type: 'board', thickness: null, usage_types: ['doors'] };
 }
 
