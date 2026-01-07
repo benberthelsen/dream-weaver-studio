@@ -54,7 +54,8 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   'essastone': {
     mapFromRoot: true,
     rootDomain: 'https://www.laminex.com.au',
-    productUrlPatterns: [/\/essastone\/colours/, /\/essastone.*colour/],
+    productUrlPatterns: [/\/essastone/, /\/products\/.*essastone/, /\/colours\/.*essastone/i, /essastone.*colour/],
+    skipAuFilter: true,
   },
   'forestone': {
     skipAuFilter: true,
@@ -95,21 +96,23 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   },
   'hafele': {
     useCrawlFallback: true,
-    productUrlPatterns: [/\/products\/.*handles/, /\/products\/.*knobs/, /\/products\/.*pulls/, /\/hardware\//],
+    productUrlPatterns: [/\/products\/.*handle/, /\/products\/.*knob/, /\/products\/.*pull/, /\/hardware\//, /\/cabinet-hardware\//, /\/kitchen-handles\//],
     excludeUrlPatterns: [/\/cart/, /\/checkout/, /\/account/],
-    imageSelectors: ['img[data-src]', 'img.product-image'],
+    imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
   },
   'caesarstone': {
-    productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//],
-    excludeUrlPatterns: [/\/find-a-retailer/, /\/contact/, /\/blog/],
+    productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
+    excludeUrlPatterns: [/\/find-a-retailer/, /\/contact/, /\/blog/, /\/professional/],
   },
   'dekton': {
-    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /dekton.*colour/],
+    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /dekton.*colour/, /\/surfaces\//],
     excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
+    skipAuFilter: true,
   },
   'silestone': {
-    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/],
+    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/, /\/quartz\//],
     excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
+    skipAuFilter: true,
   },
   'nikpol': {
     productUrlPatterns: [/\/product\//, /\/feelwood\//, /\/laminate\//, /\/board\//],
@@ -119,6 +122,36 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     skipAuFilter: true,
     productUrlPatterns: [/\/decor\//, /\/products\//, /\/eurodekor\//, /\/perfectsense\//],
     excludeUrlPatterns: [/\/contact/, /\/company/, /\/career/],
+  },
+  // NEW SUPPLIER CONFIGS
+  'smartstone': {
+    productUrlPatterns: [/\/stone-benchtops\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/inspiration/, /\/favourites/, /\/find-/, /\/professional/],
+    skipAuFilter: true,
+  },
+  'navurban': {
+    productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/],
+  },
+  'lithostone': {
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/],
+  },
+  'ydl': {
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/collection\//, /\/range\//, /\/quartz\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/],
+  },
+  'lavistone': {
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//, /\/collection\//, /\/quartz\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/],
+  },
+  'quantum-quartz': {
+    productUrlPatterns: [/\/colours\//, /\/collection\//, /\/quartz\//, /\/products\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/],
+  },
+  'wk-stone': {
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//, /\/quartz\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/],
   },
 };
 
@@ -483,6 +516,37 @@ async function fetchWithRetry(
 function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string, supplierSlug?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
+  // Helper to add product with validation
+  const addProduct = (name: string, imageUrl: string, extras: Partial<ScrapedProduct> = {}) => {
+    const trimmedName = name.trim();
+    if (!isValidProductName(trimmedName)) return;
+    if (!imageUrl) return;
+    
+    // Resolve image URL
+    let resolvedUrl = imageUrl;
+    if (!resolvedUrl.startsWith('http')) {
+      if (resolvedUrl.startsWith('//')) {
+        resolvedUrl = 'https:' + resolvedUrl;
+      } else if (resolvedUrl.startsWith('/')) {
+        resolvedUrl = baseUrl + resolvedUrl;
+      } else {
+        resolvedUrl = baseUrl + '/' + resolvedUrl;
+      }
+    }
+    
+    // Skip non-image URLs
+    if (resolvedUrl.includes('.svg') || resolvedUrl.includes('data:image')) return;
+    if (resolvedUrl.includes('logo') || resolvedUrl.includes('icon') || resolvedUrl.includes('sprite')) return;
+    
+    products.push({
+      name: trimmedName,
+      image_url: resolvedUrl,
+      color: trimmedName,
+      source_url: pageUrl,
+      ...extras,
+    });
+  };
+  
   // Enhanced patterns for different supplier formats
   const imgPatterns = [
     // Standard img with alt
@@ -495,38 +559,48 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     /<img[^>]+srcset=["']([^"'\s]+)[^"']*["'][^>]*alt=["']([^"']+)["']/gi,
     // Picture source patterns
     /<source[^>]+srcset=["']([^"'\s]+)[^"']*["'][^>]*>[^<]*<img[^>]*alt=["']([^"']+)["']/gi,
+    // Next.js / Nuxt lazy loading patterns
+    /<img[^>]+(?:data-nimg|data-nuxt-img)[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    /<img[^>]+alt=["']([^"']+)["'][^>]*(?:data-nimg|data-nuxt-img)[^>]*src=["']([^"']+)["']/gi,
   ];
   
-  // Cosentino-specific patterns (Dekton, Silestone)
-  if (supplierSlug === 'dekton' || supplierSlug === 'silestone' || supplierSlug === 'caesarstone') {
-    const colourCards = html.matchAll(/<div[^>]*class="[^"]*(?:colour|color|swatch|product-card)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]+)</gi);
-    for (const match of colourCards) {
-      if (match[1] && match[2]) {
-        const name = match[2].trim();
-        if (name.length > 2 && name.length < 80) {
-          products.push({
-            name,
-            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-            color: name,
-            source_url: pageUrl,
-          });
+  // Cosentino-specific patterns (Dekton, Silestone) - CDN images
+  if (supplierSlug === 'dekton' || supplierSlug === 'silestone') {
+    // Pattern for Cosentino CDN images
+    const cosentinoCdnPattern = /<img[^>]+src=["'](https:\/\/(?:assetstools|assets)\.cosentino\.com[^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?/gi;
+    for (const match of html.matchAll(cosentinoCdnPattern)) {
+      if (match[1]) {
+        const altText = match[2] || '';
+        if (altText && altText.length > 2 && altText.length < 80) {
+          addProduct(altText, match[1]);
         }
       }
     }
     
-    // Also try structured product data
+    // Markdown-style images (for sites that return markdown-like content)
+    const markdownImages = html.matchAll(/!\[([^\]]+)\]\((https:\/\/[^)]+)\)/g);
+    for (const match of markdownImages) {
+      if (match[1] && match[2]) {
+        addProduct(match[1], match[2]);
+      }
+    }
+    
+    // Product cards with colour/color class
+    const colourCards = html.matchAll(/<div[^>]*class="[^"]*(?:colour|color|swatch|product-card|product-item)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:span|p|h[2-6]|div)[^>]*>([^<]{2,60})</gi);
+    for (const match of colourCards) {
+      if (match[1] && match[2]) {
+        addProduct(match[2], match[1]);
+      }
+    }
+    
+    // Structured product data
     const productDataMatches = html.matchAll(/data-product[^=]*=["']([^"']+)["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/gi);
     for (const match of productDataMatches) {
       if (match[1] && match[2]) {
         try {
           const productData = JSON.parse(decodeURIComponent(match[1]));
           if (productData.name) {
-            products.push({
-              name: productData.name,
-              image_url: match[2].startsWith('http') ? match[2] : baseUrl + match[2],
-              color: productData.name,
-              source_url: pageUrl,
-            });
+            addProduct(productData.name, match[2]);
           }
         } catch {
           // Ignore parse errors
@@ -535,19 +609,51 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     }
   }
   
+  // Caesarstone patterns
+  if (supplierSlug === 'caesarstone') {
+    const caesarstonePatterns = [
+      /<div[^>]*class="[^"]*(?:colour|color|product|swatch)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:span|p|h[2-6])[^>]*>([^<]{2,60})</gi,
+      /<a[^>]*href="[^"]*colour[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    ];
+    for (const pattern of caesarstonePatterns) {
+      for (const match of html.matchAll(pattern)) {
+        if (match[1] && match[2]) {
+          addProduct(match[2], match[1]);
+        }
+      }
+    }
+  }
+  
+  // Smartstone patterns (modern Next.js site)
+  if (supplierSlug === 'smartstone') {
+    const smartstonePatterns = [
+      /<div[^>]*class="[^"]*(?:stone|colour|product|swatch|card)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src|srcset)=["']([^"'\s]+)[^"']*["'][^>]*(?:alt=["']([^"']+)["'])?/gi,
+      /<a[^>]*href="[^"]*(?:stone|colour)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+      /<img[^>]+(?:data-nimg)[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    ];
+    for (const pattern of smartstonePatterns) {
+      for (const match of html.matchAll(pattern)) {
+        if (match[1] && match[2]) {
+          addProduct(match[2], match[1]);
+        }
+      }
+    }
+  }
+  
   // Hafele hardware patterns
   if (supplierSlug === 'hafele') {
-    const productCards = html.matchAll(/<div[^>]*class="[^"]*product[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:h[2-4]|span|div)[^>]*class="[^"]*(?:name|title)[^"]*"[^>]*>([^<]+)</gi);
+    const productCards = html.matchAll(/<div[^>]*class="[^"]*(?:product|item|handle|hardware)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:h[2-4]|span|div|a)[^>]*(?:class="[^"]*(?:name|title|product-name)[^"]*")?[^>]*>([^<]{3,80})</gi);
     for (const match of productCards) {
       if (match[1] && match[2]) {
-        const name = match[2].trim();
-        if (name.length > 2 && name.length < 100) {
-          products.push({
-            name,
-            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-            source_url: pageUrl,
-          });
-        }
+        addProduct(match[2], match[1]);
+      }
+    }
+    
+    // Also try anchor-based product links
+    const productLinks = html.matchAll(/<a[^>]*href="[^"]*(?:product|handle|knob)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]{3,80})</gi);
+    for (const match of productLinks) {
+      if (match[1] && match[2]) {
+        addProduct(match[2], match[1]);
       }
     }
   }
@@ -564,12 +670,7 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
       const swatches = html.matchAll(swatchPattern);
       for (const match of swatches) {
         if (match[1] && match[2] && match[2].trim().length > 2 && match[2].trim().length < 80) {
-          products.push({
-            name: match[2].trim(),
-            image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-            color: match[2].trim(),
-            source_url: pageUrl,
-          });
+          addProduct(match[2], match[1]);
         }
       }
     }
@@ -586,17 +687,50 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
       const matches = html.matchAll(pattern);
       for (const match of matches) {
         if (match[1] && match[2]) {
-          const name = match[2].trim();
-          if (name.length > 2 && name.length < 80) {
-            products.push({
-              name,
-              image_url: match[1].startsWith('http') ? match[1] : baseUrl + match[1],
-              color: name,
-              source_url: pageUrl,
-            });
-          }
+          addProduct(match[2], match[1]);
         }
       }
+    }
+  }
+  
+  // Navurban patterns
+  if (supplierSlug === 'navurban') {
+    const navurbanPatterns = [
+      /<div[^>]*class="[^"]*(?:product|colour|timber|range)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?/gi,
+      /<a[^>]*href="[^"]*navurban[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    ];
+    for (const pattern of navurbanPatterns) {
+      for (const match of html.matchAll(pattern)) {
+        if (match[1] && match[2]) {
+          addProduct(match[2], match[1]);
+        }
+      }
+    }
+  }
+  
+  // Stone supplier patterns (Lithostone, YDL, Lavistone, Quantum Quartz, WK Stone)
+  if (['lithostone', 'ydl', 'lavistone', 'quantum-quartz', 'wk-stone'].includes(supplierSlug || '')) {
+    const stonePatterns = [
+      /<div[^>]*class="[^"]*(?:product|colour|stone|quartz|swatch|collection)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?[\s\S]*?<(?:h[2-6]|span|p|div)[^>]*>([^<]{2,60})</gi,
+      /<a[^>]*href="[^"]*(?:product|colour|stone)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+      /<figure[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
+    ];
+    for (const pattern of stonePatterns) {
+      for (const match of html.matchAll(pattern)) {
+        const name = match[3] || match[2];
+        const imageUrl = match[1];
+        if (imageUrl && name) {
+          addProduct(name, imageUrl);
+        }
+      }
+    }
+  }
+  
+  // Background images in inline styles (for some modern sites)
+  const bgImagePattern = /style="[^"]*background(?:-image)?:\s*url\(['"]?([^'")\s]+)['"]?\)[^"]*"[^>]*>[\s\S]*?<[^>]*(?:class="[^"]*(?:name|title)[^"]*")?[^>]*>([^<]{2,60})</gi;
+  for (const match of html.matchAll(bgImagePattern)) {
+    if (match[1] && match[2]) {
+      addProduct(match[2], match[1]);
     }
   }
   
@@ -617,12 +751,10 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
       }
       
       if (!imageUrl || !altText) continue;
-      if (imageUrl.includes('logo') || imageUrl.includes('icon') || imageUrl.includes('sprite')) continue;
-      if (imageUrl.includes('.svg') || imageUrl.includes('data:image')) continue;
       if (altText.length < 3 || altText.length > 100) continue;
       
       // Skip non-product alt text
-      const skipWords = ['menu', 'navigation', 'banner', 'hero', 'slider', 'button', 'close', 'search', 'arrow', 'loading', 'placeholder'];
+      const skipWords = ['menu', 'navigation', 'banner', 'hero', 'slider', 'button', 'close', 'search', 'arrow', 'loading', 'placeholder', 'logo', 'icon'];
       if (skipWords.some(word => altText.toLowerCase().includes(word))) continue;
       
       const isProduct = 
@@ -635,6 +767,7 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         imageUrl.includes('timber') ||
         imageUrl.includes('veneer') ||
         imageUrl.includes('stone') ||
+        imageUrl.includes('quartz') ||
         imageUrl.includes('surface') ||
         imageUrl.includes('handle') ||
         imageUrl.includes('hardware') ||
@@ -647,24 +780,13 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         altText.toLowerCase().includes('gray') ||
         altText.toLowerCase().includes('marble') ||
         altText.toLowerCase().includes('concrete') ||
+        altText.toLowerCase().includes('calacatta') ||
+        altText.toLowerCase().includes('carrara') ||
         altText.toLowerCase().includes('brushed') ||
         altText.toLowerCase().includes('matt') ||
         altText.toLowerCase().includes('gloss');
         
       if (!isProduct) continue;
-      
-      if (!imageUrl.startsWith('http')) {
-        if (imageUrl.startsWith('//')) {
-          imageUrl = 'https:' + imageUrl;
-        } else if (imageUrl.startsWith('/')) {
-          imageUrl = baseUrl + imageUrl;
-        } else {
-          imageUrl = baseUrl + '/' + imageUrl;
-        }
-      }
-      
-      let color = altText;
-      const hexMatch = html.match(new RegExp(`${altText}[^#]*#([0-9a-fA-F]{6})`));
       
       // Extract finish type from name
       let finishType: string | undefined;
@@ -676,18 +798,24 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         }
       }
       
-      products.push({
-        name: altText.trim(),
-        image_url: imageUrl,
-        color: color,
+      // Try to extract hex color from nearby HTML
+      const hexMatch = html.match(new RegExp(`${altText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^#]*#([0-9a-fA-F]{6})`));
+      
+      addProduct(altText, imageUrl, {
         hex_color: hexMatch ? `#${hexMatch[1]}` : undefined,
         finish_type: finishType,
-        source_url: pageUrl,
       });
     }
   }
   
-  return products;
+  // Deduplicate by name before returning
+  const seen = new Set<string>();
+  return products.filter(p => {
+    const key = p.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // Filter URLs to find product pages with supplier-specific configuration
@@ -700,7 +828,11 @@ function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string
     'swatch', 'sample', 'melamine', 'compact', 'acrylic', 'benchtop',
     'door', 'panel', 'board', 'woodgrain', 'solid-colour', 'metallic',
     'handle', 'knob', 'pull', 'hardware', 'eurodekor', 'perfectsense',
-    'meganite', 'egger', 'feelwood'
+    'meganite', 'egger', 'feelwood',
+    // Additional keywords for stone suppliers
+    'stone-benchtops', 'quartz-surfaces', 'sintered', 'engineered-stone',
+    'calacatta', 'carrara', 'statuario', 'marble', 'granite', 'quartz',
+    'navurban', 'silestone', 'dekton'
   ];
   
   const genericExcludeKeywords = [
@@ -709,7 +841,8 @@ function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string
     'pdf', 'download', 'document', 'warranty', 'sustainability',
     'video', 'instagram', 'facebook', 'twitter', 'linkedin', 'youtube',
     'subscribe', 'newsletter', 'sitemap', 'search', 'account', 'location',
-    'find-a-retailer', 'stockists', 'inspirations', 'professional'
+    'find-a-retailer', 'stockists', 'inspirations', 'professional',
+    'favourites', 'favorites', 'wishlist', 'compare'
   ];
   
   return urls.filter(url => {
@@ -757,8 +890,8 @@ function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string
 }
 
 // Crawl fallback when map returns no results
-async function crawlFallback(url: string, firecrawlKey: string, limit: number = 50): Promise<string[]> {
-  console.log(`Using crawl fallback for ${url}`);
+async function crawlFallback(url: string, firecrawlKey: string, limit: number = 100, maxDepth: number = 3): Promise<string[]> {
+  console.log(`Using crawl fallback for ${url} (limit: ${limit}, depth: ${maxDepth})`);
   
   try {
     const crawlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/crawl', {
@@ -770,7 +903,7 @@ async function crawlFallback(url: string, firecrawlKey: string, limit: number = 
       body: JSON.stringify({
         url,
         limit,
-        maxDepth: 2,
+        maxDepth,
         scrapeOptions: {
           formats: ['links'],
         },
@@ -1035,9 +1168,14 @@ Deno.serve(async (req) => {
       current_url: null,
     });
 
-    // Step 4: Deduplicate products by name (case-insensitive)
+    // Step 4: Deduplicate and validate products by name (case-insensitive)
     const seenProducts = new Set<string>();
     const uniqueProducts = allProducts.filter(p => {
+      // Apply validation filter
+      if (!isValidProductName(p.name)) {
+        console.log(`  Filtered out invalid product name: "${p.name}"`);
+        return false;
+      }
       const key = p.name.toLowerCase().trim();
       if (seenProducts.has(key)) return false;
       seenProducts.add(key);
