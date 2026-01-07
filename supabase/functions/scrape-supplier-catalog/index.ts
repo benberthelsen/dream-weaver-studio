@@ -309,6 +309,56 @@ function isValidProductName(name: string): boolean {
     /^(panels?)$/i,
     /^(accessories)$/i,
     /^(benchtops?)$/i,
+    
+    // === NEW PATTERNS FOR JUNK CLEANUP ===
+    
+    // File name artifacts with underscores/dimensions
+    /_CU_/,
+    /_[Rr]ender/,
+    /_landscape/i,
+    /_Moodboard/i,
+    /\d{3,}x\d{3,}/,  // Dimensions like 1920x1080
+    /_$/,  // Trailing underscore
+    
+    // Promotional/marketing text
+    /\bfind out more\b/i,
+    /\bintroducing\b/i,
+    /\btradehub\b/i,
+    /\btrends\b/i,
+    /\bpage media\b/i,
+    /\brepresentative\b/i,
+    /\bcustomer\b/i,
+    /\binteriors addict\b/i,
+    /\bkitchen designs?\b/i,
+    /\bwarranty\b/i,
+    /\bsustainability\b/i,
+    /\bhomepage\b/i,
+    /\bfinishes$/i,  // "Caesarstone finishes"
+    /\blocations?\b/i,
+    /\blogo\b/i,
+    
+    // Collection/marketing phrases
+    /\bcollection\b.*\b(egger|meganite|flooring|decorative)\b/i,
+    /\bresponsible specifier\b/i,
+    /\bsample sheet\b/i,
+    /\bcollectin\b/i,  // Typo variant
+    /\bminerals and metallics kitchen\b/i,
+    
+    // Product category descriptors (too generic)
+    /\bsheets and mouldings\b/i,
+    /\bpanels and tiles\b/i,
+    /\bpanels and boards\b/i,
+    /^decorated (panel|particleboard|mdf)/i,
+    /^(laminex|formica)\s+(compact laminate|laminate|decorated)/i,
+    /\blaminate \(hpl\)/i,
+    /\breadyfit benchtops?\b/i,
+    /^bathroom with\b/i,
+    
+    // Brand-only names (not actual products)
+    /^(laminex|caesarstone|polytec|cosentino|formica)$/i,
+    
+    // Image descriptions
+    /\bimage\s*of\b.*\bin\b/i,
   ];
   
   // Also reject if it looks like a generic category name
@@ -336,6 +386,11 @@ function isGenericCategoryName(name: string): boolean {
     // Laminex-specific product types that appear as "names"
     'readyfit benchtops', 'laminex readyfit', 'next generation woodgrains',
     'product type', 'product application', 'colour texture',
+    // Additional category names from junk analysis
+    'accents', 'minerals', 'woodgrains', 'solids', 'collections',
+    'bathrooms', 'kitchens', 'downloads', 'blog', 'facades',
+    'exteriors', 'interiors', 'whites', 'neutrals', 'whites & neutrals',
+    'colours', 'colors', 'finishes',
   ];
   
   // Exact match
