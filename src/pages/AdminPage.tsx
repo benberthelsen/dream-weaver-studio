@@ -652,8 +652,7 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
         const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
           body: { 
             supplierId: supplier.id,
-            jobId: activeJobId,
-            options: { mode: 'work', batchSize: 5 }
+            options: { mode: 'work', jobId: activeJobId, batchSize: 5 }
           },
         });
 
