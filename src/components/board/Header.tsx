@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, Save, FolderOpen, Sparkles, Home, Layers } from "lucide-react";
+import { LayoutGrid, Save, FolderOpen, Sparkles, Layers, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -14,6 +14,7 @@ export function Header({ onOpenShowroom }: HeaderProps) {
     { path: "/", label: "Inspiration", icon: Sparkles },
     { path: "/collections", label: "Collections", icon: Layers },
     { path: "/board", label: "Board Builder", icon: LayoutGrid },
+    { path: "/admin", label: "Admin", icon: Settings },
   ];
 
   return (

@@ -316,6 +316,50 @@ export type Database = {
         }
         Relationships: []
       }
+      scrape_job_urls: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          job_id: string
+          processed_at: string | null
+          products_found: number | null
+          products_inserted: number | null
+          status: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id: string
+          processed_at?: string | null
+          products_found?: number | null
+          products_inserted?: number | null
+          status?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          processed_at?: string | null
+          products_found?: number | null
+          products_inserted?: number | null
+          status?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scrape_job_urls_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "scrape_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scrape_jobs: {
         Row: {
           completed_at: string | null
@@ -323,6 +367,7 @@ export type Database = {
           current_url: string | null
           error_message: string | null
           id: string
+          mode: string | null
           pages_failed: number | null
           pages_scraped: number | null
           products_found: number | null
@@ -330,7 +375,9 @@ export type Database = {
           started_at: string | null
           status: string
           supplier_id: string | null
+          urls_completed: number | null
           urls_mapped: number | null
+          urls_queued: number | null
           urls_to_scrape: number | null
         }
         Insert: {
@@ -339,6 +386,7 @@ export type Database = {
           current_url?: string | null
           error_message?: string | null
           id?: string
+          mode?: string | null
           pages_failed?: number | null
           pages_scraped?: number | null
           products_found?: number | null
@@ -346,7 +394,9 @@ export type Database = {
           started_at?: string | null
           status?: string
           supplier_id?: string | null
+          urls_completed?: number | null
           urls_mapped?: number | null
+          urls_queued?: number | null
           urls_to_scrape?: number | null
         }
         Update: {
@@ -355,6 +405,7 @@ export type Database = {
           current_url?: string | null
           error_message?: string | null
           id?: string
+          mode?: string | null
           pages_failed?: number | null
           pages_scraped?: number | null
           products_found?: number | null
@@ -362,7 +413,9 @@ export type Database = {
           started_at?: string | null
           status?: string
           supplier_id?: string | null
+          urls_completed?: number | null
           urls_mapped?: number | null
+          urls_queued?: number | null
           urls_to_scrape?: number | null
         }
         Relationships: [
