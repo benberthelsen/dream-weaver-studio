@@ -1733,6 +1733,17 @@ Deno.serve(async (req) => {
         console.log(`  Filtered out invalid product name: "${p.name}"`);
         return false;
       }
+      
+      // Supplier-specific product filtering
+      if (supplier.slug === 'hafele') {
+        const nameLower = p.name.toLowerCase();
+        const isHandle = nameLower.includes('handle') || nameLower.includes('pull') || nameLower.includes('knob');
+        if (!isHandle) {
+          console.log(`  Filtered out non-handle Hafele product: "${p.name}"`);
+          return false;
+        }
+      }
+      
       const key = p.name.toLowerCase().trim();
       if (seenProducts.has(key)) return false;
       seenProducts.add(key);
