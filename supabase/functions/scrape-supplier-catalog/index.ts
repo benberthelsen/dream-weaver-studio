@@ -131,7 +131,7 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     skipAuFilter: true,
     productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//],
   },
-  'hafele': {
+'hafele': {
     useCrawlFallback: true,
     productUrlPatterns: [
       /\/products\/.*handle/i,
@@ -144,6 +144,8 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/cabinet-hardware\//,
       /\/kitchen-handles\//,
       /\/en\/products\//,
+      /\/en\/s\//,  // Hafele search/browse pages
+      /\/p\//,  // Individual product pages
     ],
     excludeUrlPatterns: [
       /\/cart/,
@@ -155,11 +157,16 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/contact/,
       /\/about/,
       /\.pdf$/,
+      /\/service/,
+      /\/showroom/,
     ],
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
+    skipAuFilter: true,  // hafele.com.au
     seedUrls: [
-      '/en/products/furniture-fittings/',
-      '/en/products/kitchen/',
+      '/en/products/',
+      '/en/s/handles/',
+      '/en/s/knobs/',
+      '/en/s/furniture-fittings/',
     ],
   },
   'caesarstone': {
@@ -171,10 +178,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
     skipAuFilter: true,
   },
-  'silestone': {
-    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/, /\/quartz\//],
-    excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
+'silestone': {
+    productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/, /\/quartz\//, /\/silestone\//],
+    excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/, /\/blog/, /\/news/],
     skipAuFilter: true,
+    mapFromRoot: true,
+    rootDomain: 'https://www.cosentino.com',
+    seedUrls: ['/en-au/silestone/colours/'],
   },
   'nikpol': {
     productUrlPatterns: [/\/product\//, /\/feelwood\//, /\/laminate\//, /\/board\//],
@@ -186,30 +196,42 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeUrlPatterns: [/\/contact/, /\/company/, /\/career/],
   },
   // NEW SUPPLIER CONFIGS
-  'smartstone': {
-    productUrlPatterns: [/\/stones\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/inspiration/, /\/favourites/, /\/find-/, /\/professional/],
+'smartstone': {
+    productUrlPatterns: [/\/stones\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//, /\/category\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/inspiration/, /\/favourites/, /\/find-/, /\/professional/, /\/showrooms\//, /\/information\//],
     skipAuFilter: true,
-    seedUrls: ['/stones/'],  // Nuxt.js site - use /stones/ endpoint
+    useCrawlFallback: true,  // Nuxt.js SPA needs crawl
+    seedUrls: ['/stones/', '/category/deluxe-price-range/', '/category/classic-price-range/', '/category/pure-price-range/'],
   },
   'navurban': {
-    productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//, /\/timber\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/],
-    seedUrls: ['/navurban/'],  // Single-page catalog - scrape main page directly
+    productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//, /\/timber\//, /\/veneers\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/blog/],
+    skipAuFilter: true,  // newageveneer.com.au is Australian
+    seedUrls: ['/navurban/'],  // Single-page catalog with all 33 products
   },
   'lithostone': {
-    productUrlPatterns: [/\/lithostone\//, /\/compac\//, /\/sintered-stone\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/safety-facts/, /\/gallery\//],
-    seedUrls: ['/lithostone/', '/compac-outdoor/', '/sintered-stone/'],  // Multiple product ranges
+    productUrlPatterns: [/\/lithostone\//, /\/compac\//, /\/sintered-stone\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//, /\/product\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/safety-facts/, /\/gallery\//, /\/care-and-maintenance/],
+    skipAuFilter: true,  // lithostonequartzsurfaces.com.au
+    seedUrls: ['/products/lithostone/', '/products/compac/', '/products/'],  // Main product pages
   },
-  'ydl': {
-    productUrlPatterns: [/\/products\//, /\/colours\//, /\/collection\//, /\/range\//, /\/quartz\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/],
+  'ydl-stone': {
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/collection\//, /\/range\//, /\/quartz\//, /\/mineral\//, /\/porcelain\//, /\/natural-stone\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/news/],
+    skipAuFilter: true,  // ydlstone.com.au
+    seedUrls: ['/products/', '/products/mineral/', '/products/porcelain/', '/products/natural-stone/'],
+  },
+  'ydl': {  // Alias for ydl-stone
+    productUrlPatterns: [/\/products\//, /\/colours\//, /\/collection\//, /\/range\//, /\/quartz\//, /\/mineral\//, /\/porcelain\//, /\/natural-stone\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/news/],
+    skipAuFilter: true,
+    seedUrls: ['/products/', '/products/mineral/', '/products/porcelain/', '/products/natural-stone/'],
   },
   'lavistone': {
-    productUrlPatterns: [/\/our-range\//, /\/product\//, /\/product-category\//, /\/quartz\//, /\/natural-stone\//],
-    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/my-account/],
-    seedUrls: ['/our-range/'],  // WooCommerce - use main product archive page
+    productUrlPatterns: [/\/our-range\//, /\/product\//, /\/product-category\//, /\/quartz\//, /\/natural-stone\//, /\/gen-surface\//, /\/porcelain\//],
+    excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/my-account/, /\/blog/],
+    skipAuFilter: true,  // lavistone.com.au
+    seedUrls: ['/our-range/', '/product-category/gen-surface/', '/product-category/natural-stone/', '/product-category/porcelain/'],
   },
   'quantum-quartz': {
     productUrlPatterns: [/\/colours\//, /\/collection\//, /\/quartz\//, /\/products\//],
@@ -822,6 +844,38 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
         if (altText && altText.length > 2 && altText.length < 80) {
           addProduct(altText, match[1]);
         }
+      }
+    }
+    
+    // Cosentino data-lazy-src pattern (used in colour grid)
+    const dataLazySrcPattern = /<img[^>]+data-lazy-src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
+    for (const match of html.matchAll(dataLazySrcPattern)) {
+      if (match[1] && match[2] && match[2].length > 2 && match[2].length < 80) {
+        addProduct(match[2], match[1]);
+      }
+    }
+    
+    // Cosentino inspiration class pattern
+    const inspirationPattern = /<div[^>]*class="[^"]*inspiration[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-lazy-src|src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
+    for (const match of html.matchAll(inspirationPattern)) {
+      if (match[1] && match[2] && match[2].length > 2 && match[2].length < 80) {
+        addProduct(match[2], match[1]);
+      }
+    }
+    
+    // Cosentino colour/color card with title div
+    const titleCardPattern = /<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]{2,60})<\/div>[\s\S]*?<img[^>]+(?:src|data-lazy-src)=["']([^"']+)["']/gi;
+    for (const match of html.matchAll(titleCardPattern)) {
+      if (match[1] && match[2]) {
+        addProduct(match[1], match[2]);
+      }
+    }
+    
+    // Reverse pattern: img before title
+    const imgBeforeTitlePattern = /<img[^>]+(?:src|data-lazy-src)=["']([^"']+)["'][^>]*>[\s\S]*?<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]{2,60})<\/div>/gi;
+    for (const match of html.matchAll(imgBeforeTitlePattern)) {
+      if (match[1] && match[2]) {
+        addProduct(match[2], match[1]);
       }
     }
     
@@ -1513,12 +1567,16 @@ Deno.serve(async (req) => {
       'essastone': 'Extract all Essastone engineered stone colour swatches from this page. Look for colour/color cards with names like "Pure White", "Ash Grey", "Silver Pearl". Each should have a name and image URL.',
       'laminex': 'Extract all Laminex decor colours including laminate, Formica, and board colours. Look for colour swatches or product tiles.',
       'polytec': 'Extract all Polytec decor colours including Ravine, Woodmatt, and standard colours. Look for colour swatches or decor cards.',
-      'smartstone': 'Extract all Smartstone quartz colours/colors from this page. Look for stone sample images with names.',
-      'navurban': 'Extract all Navurban timber veneer colours/species from this page.',
-      'lavistone': 'Extract all Lavistone quartz and stone colours from this product page.',
-      'caesarstone': 'Extract all Caesarstone quartz colours from this page. Look for colour swatches with names.',
-      'silestone': 'Extract all Silestone quartz colours from this page.',
-      'dekton': 'Extract all Dekton ultra-compact surface colours from this page.',
+      'smartstone': 'Extract all Smartstone engineered quartz stone colours from this page. Look in the Deluxe, Classic, and Pure price range categories. Each stone has a name (like "Athena", "Absolute Blanc", "Naxos") and a swatch/sample image. Return ALL colours visible.',
+      'navurban': 'Extract all NAVURBAN timber veneer decors from this New Age Veneers page. There are 33 decors with species names like "Blackened American Oak", "Classic American Oak", "Scarborough", "Ironbark". Each has a product-title and a swatch image. Return ALL timber veneers.',
+      'lavistone': 'Extract all Lavistone surface products from this WooCommerce product grid. Products include Gen Surface, Natural Stone, and Porcelain ranges. Each has a product code and name (like "LVNS1026 ARABESCATO VAGLI VERDE") and a product image. Return ALL products visible.',
+      'lithostone': 'Extract all Lithostone quartz surface colours from this page. Products include Lithostone quartz and Compac ranges. Look for colour swatches with names like "Bianco", "Calacatta", "Carrara". Return ALL colours.',
+      'ydl': 'Extract all YDL Stone surface colours from this page. Products include Mineral (silica-free), Porcelain, and Natural Stone ranges. Each colour has a name and product image. Return ALL colours visible.',
+      'ydl-stone': 'Extract all YDL Stone surface colours from this page. Products include Mineral (silica-free), Porcelain, and Natural Stone ranges. Each colour has a name and product image. Return ALL colours visible.',
+      'hafele': 'Extract all Hafele hardware products from this page including handles, knobs, pulls, and furniture fittings. Each product has a name (like "D Handle Matt Black 160mm") and a product image. Return ALL hardware products visible.',
+      'silestone': 'Extract all Silestone quartz surface colours from this Cosentino page. Look for colour cards with titles like "Evergrey", "Misty Silver", "Eternal Calacatta Gold". Each has a colour image and name. Return ALL Silestone colours visible.',
+      'caesarstone': 'Extract all Caesarstone quartz colours from this page. Look for colour swatches with names like "Pure White", "Calacatta Nuvo". Return ALL colours.',
+      'dekton': 'Extract all Dekton ultra-compact surface colours from this page. Look for colour cards with names and swatch images.',
       'forestone': 'Extract all product colours including Meganite, Egger, and other brands.',
     };
 
