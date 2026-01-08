@@ -32,7 +32,10 @@ import {
   Trash2,
   Edit,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Play,
+  Square,
+  ListPlus
 } from "lucide-react";
 import type { Supplier } from "@/types/board";
 
@@ -40,8 +43,11 @@ interface ScrapeJob {
   id: string;
   supplier_id: string;
   status: string;
+  mode: string | null;
   urls_mapped: number;
   urls_to_scrape: number;
+  urls_queued: number;
+  urls_completed: number;
   pages_scraped: number;
   pages_failed: number;
   products_found: number;
@@ -525,8 +531,30 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
   const [isTesting, setIsTesting] = useState(false);
-  const { mutate: scrapeCatalog, isPending } = useScrapeSupplierCatalog();
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const { mutate: deleteSupplier, isPending: isDeleting } = useDeleteSupplier();
+
+  // Check for existing active job on mount
+  useEffect(() => {
+    const checkActiveJob = async () => {
+      const { data } = await supabase
+        .from("scrape_jobs")
+        .select("*")
+        .eq("supplier_id", supplier.id)
+        .in("status", ["pending", "mapping", "scraping", "planned", "working"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      
+      if (data && data.length > 0) {
+        setActiveJobId(data[0].id);
+        setJobProgress(data[0] as ScrapeJob);
+        setShowProgressDialog(true);
+      }
+    };
+    checkActiveJob();
+  }, [supplier.id]);
 
   // Subscribe to realtime updates for the active job
   useEffect(() => {
@@ -563,9 +591,15 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
             setJobProgress(job);
             
             if (job.status === 'completed') {
+              setIsWorking(false);
               toast.success(`Import complete! Added ${job.products_inserted} products.`);
             } else if (job.status === 'failed') {
+              setIsWorking(false);
               toast.error(`Import failed: ${job.error_message}`);
+            } else if (job.status === 'cancelled') {
+              setIsWorking(false);
+              setIsStopping(false);
+              toast.info('Import cancelled');
             }
           }
         }
@@ -577,32 +611,117 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
     };
   }, [activeJobId]);
 
-  const handleScrape = () => {
+  // Auto-run work batches when in working mode
+  useEffect(() => {
+    if (!isWorking || !activeJobId || !jobProgress) return;
+    if (jobProgress.status === 'completed' || jobProgress.status === 'failed' || jobProgress.status === 'cancelled') {
+      setIsWorking(false);
+      return;
+    }
+
+    // Only continue if there are queued URLs left
+    const queuedLeft = (jobProgress.urls_queued || 0) - (jobProgress.urls_completed || 0);
+    if (queuedLeft <= 0 && jobProgress.status !== 'planned') {
+      return;
+    }
+
+    const runNextBatch = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+          body: { 
+            supplierId: supplier.id,
+            jobId: activeJobId,
+            options: { mode: 'work', batchSize: 5 }
+          },
+        });
+
+        if (error) {
+          console.error('Work batch failed:', error);
+          // Don't stop on individual batch errors, the job will track them
+        }
+
+        // Check if we should continue
+        if (data?.complete) {
+          setIsWorking(false);
+        }
+      } catch (err) {
+        console.error('Work batch error:', err);
+      }
+    };
+
+    // Run next batch after a short delay
+    const timer = setTimeout(runNextBatch, 1500);
+    return () => clearTimeout(timer);
+  }, [isWorking, activeJobId, jobProgress?.urls_completed, jobProgress?.status]);
+
+  const handlePlanImport = async () => {
     if (!scrapeUrl) {
       toast.error("Please enter a URL to scrape");
       return;
     }
 
+    setIsPlanning(true);
     setShowProgressDialog(true);
 
-    scrapeCatalog(
-      { supplierId: supplier.id, url: scrapeUrl, options: { maxPages: 10 } },
-      {
-        onSuccess: (data) => {
-          if (data.jobId) {
-            setActiveJobId(data.jobId);
-          } else {
-            // If no job ID returned, show results directly
-            toast.success(`Imported ${data.stats?.productsInserted || 0} products`);
-            setShowProgressDialog(false);
-          }
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+        body: { 
+          supplierId: supplier.id, 
+          url: scrapeUrl,
+          options: { mode: 'plan', maxPages: 50 }
         },
-        onError: (error) => {
-          toast.error(`Failed to start import: ${error.message}`);
-          setShowProgressDialog(false);
-        },
+      });
+
+      if (error) throw error;
+
+      if (data.jobId) {
+        setActiveJobId(data.jobId);
+        toast.success(`Planned ${data.urlsQueued || 0} URLs to scrape`);
       }
-    );
+    } catch (error) {
+      toast.error(`Failed to plan import: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setShowProgressDialog(false);
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  const handleRunImport = () => {
+    if (!activeJobId) {
+      toast.error("No job to run - plan an import first");
+      return;
+    }
+    setIsWorking(true);
+    toast.info('Starting batch processing...');
+  };
+
+  const handleStopImport = async () => {
+    if (!activeJobId) return;
+    
+    setIsStopping(true);
+    setIsWorking(false);
+
+    try {
+      // Update job status to cancelled
+      await supabase
+        .from('scrape_jobs')
+        .update({ status: 'cancelled', completed_at: new Date().toISOString() })
+        .eq('id', activeJobId);
+
+      // Mark pending URLs as skipped
+      await supabase
+        .from('scrape_job_urls')
+        .update({ status: 'skipped' })
+        .eq('job_id', activeJobId)
+        .eq('status', 'pending');
+
+      toast.info('Import stopped');
+    } catch (error) {
+      console.error('Failed to stop import:', error);
+      toast.error('Failed to stop import');
+    } finally {
+      setIsStopping(false);
+    }
   };
 
   const handleTestScrape = async () => {
@@ -652,9 +771,13 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
     setShowProgressDialog(false);
     setActiveJobId(null);
     setJobProgress(null);
+    setIsWorking(false);
   };
 
-  const isJobComplete = jobProgress?.status === 'completed' || jobProgress?.status === 'failed';
+  const isJobComplete = jobProgress?.status === 'completed' || jobProgress?.status === 'failed' || jobProgress?.status === 'cancelled';
+  const isJobPlanned = jobProgress?.status === 'planned';
+  const isJobRunning = jobProgress?.status === 'working' || jobProgress?.status === 'scraping';
+  const hasActiveJob = activeJobId && !isJobComplete;
 
   return (
     <>
@@ -720,43 +843,96 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
               placeholder="https://example.com/products"
             />
           </div>
+          
+          {/* Action buttons */}
           <div className="flex gap-2">
             <Button 
               variant="outline"
               onClick={handleTestScrape}
               disabled={isTesting || !scrapeUrl}
-              className="flex-1"
+              size="sm"
             >
               {isTesting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Testing...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <>
-                  <FileSearch className="h-4 w-4 mr-2" />
-                  Test
-                </>
+                <FileSearch className="h-4 w-4" />
               )}
             </Button>
-            <Button 
-              onClick={handleScrape}
-              disabled={isPending}
-              className="flex-1"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Import
-                </>
-              )}
-            </Button>
+            
+            {!hasActiveJob ? (
+              <Button 
+                onClick={handlePlanImport}
+                disabled={isPlanning || !scrapeUrl}
+                className="flex-1"
+              >
+                {isPlanning ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Planning...
+                  </>
+                ) : (
+                  <>
+                    <ListPlus className="h-4 w-4 mr-2" />
+                    Plan Import
+                  </>
+                )}
+              </Button>
+            ) : (
+              <>
+                {isJobPlanned && !isWorking && (
+                  <Button 
+                    onClick={handleRunImport}
+                    className="flex-1"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Run Import ({jobProgress?.urls_queued || 0} URLs)
+                  </Button>
+                )}
+                {(isWorking || isJobRunning) && (
+                  <Button 
+                    variant="destructive"
+                    onClick={handleStopImport}
+                    disabled={isStopping}
+                    className="flex-1"
+                  >
+                    {isStopping ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Square className="h-4 w-4 mr-2" />
+                    )}
+                    Stop
+                  </Button>
+                )}
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowProgressDialog(true)}
+                  size="sm"
+                >
+                  View Progress
+                </Button>
+              </>
+            )}
           </div>
+
+          {/* Mini progress indicator when job is active */}
+          {hasActiveJob && (
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div className="flex items-center justify-between">
+                <span>
+                  {jobProgress?.status === 'planned' && '📋 Planned'}
+                  {jobProgress?.status === 'working' && '⚙️ Working...'}
+                  {jobProgress?.status === 'scraping' && '📄 Scraping...'}
+                </span>
+                <span>
+                  {jobProgress?.urls_completed || 0} / {jobProgress?.urls_queued || 0} URLs
+                </span>
+              </div>
+              <Progress 
+                value={jobProgress?.urls_queued ? ((jobProgress?.urls_completed || 0) / jobProgress.urls_queued) * 100 : 0} 
+                className="h-1" 
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -912,8 +1088,8 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
               Close
             </Button>
             {testResults?.recommendation?.startsWith('✅') && (
-              <Button onClick={() => { setShowTestDialog(false); handleScrape(); }}>
-                Run Full Import
+              <Button onClick={() => { setShowTestDialog(false); handlePlanImport(); }}>
+                Plan Import
               </Button>
             )}
           </DialogFooter>
@@ -935,141 +1111,119 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
               ) : jobProgress?.status === 'failed' ? (
                 <XCircle className="h-5 w-5 text-destructive" />
-              ) : (
+              ) : jobProgress?.status === 'cancelled' ? (
+                <Square className="h-5 w-5 text-muted-foreground" />
+              ) : isWorking ? (
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              ) : (
+                <ListPlus className="h-5 w-5 text-primary" />
               )}
-              Importing {supplier.name} Catalog
+              {supplier.name} Import
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
+          <div className="space-y-4 py-4">
             {/* Status Badge */}
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Status</span>
               <Badge variant={
                 jobProgress?.status === 'completed' ? 'default' :
-                jobProgress?.status === 'failed' ? 'destructive' : 'secondary'
+                jobProgress?.status === 'failed' ? 'destructive' :
+                jobProgress?.status === 'cancelled' ? 'secondary' : 'outline'
               }>
-                {jobProgress?.status === 'mapping' && '🔍 Discovering pages...'}
-                {jobProgress?.status === 'scraping' && '📄 Scraping products...'}
-                {jobProgress?.status === 'inserting' && '💾 Saving products...'}
+                {jobProgress?.status === 'planned' && '📋 Planned'}
+                {jobProgress?.status === 'working' && '⚙️ Processing...'}
+                {jobProgress?.status === 'scraping' && '📄 Scraping...'}
                 {jobProgress?.status === 'completed' && '✅ Complete'}
                 {jobProgress?.status === 'failed' && '❌ Failed'}
+                {jobProgress?.status === 'cancelled' && '⏹️ Cancelled'}
                 {jobProgress?.status === 'pending' && '⏳ Starting...'}
+                {jobProgress?.status === 'mapping' && '🔍 Mapping...'}
                 {!jobProgress && '⏳ Initializing...'}
               </Badge>
             </div>
 
-            {/* Progress Steps */}
-            <div className="space-y-5">
-              {/* Step 1: Mapping */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className={`p-2 rounded-full ${jobProgress?.status === 'mapping' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                    <Globe className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Website Mapping</p>
-                    <p className="text-muted-foreground text-xs">Discovering product pages</p>
-                  </div>
-                  <span className="font-mono text-sm font-medium">
-                    {jobProgress?.urls_mapped || 0}
-                  </span>
-                </div>
-                {jobProgress?.status === 'mapping' && (
-                  <div className="ml-11">
-                    <Progress value={undefined} className="h-1.5" />
-                  </div>
-                )}
+            {/* URL Progress */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">URLs Processed</span>
+                <span className="font-mono font-medium">
+                  {jobProgress?.urls_completed || 0} / {jobProgress?.urls_queued || 0}
+                </span>
               </div>
+              <Progress 
+                value={jobProgress?.urls_queued ? ((jobProgress?.urls_completed || 0) / jobProgress.urls_queued) * 100 : 0} 
+                className="h-2" 
+              />
+            </div>
 
-              {/* Step 2: Scraping */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className={`p-2 rounded-full ${jobProgress?.status === 'scraping' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                    <FileSearch className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Scraping Pages</p>
-                    <p className="text-muted-foreground text-xs">Extracting product data</p>
-                  </div>
-                  <span className="font-mono text-sm font-medium">
-                    {jobProgress?.pages_scraped || 0} / {jobProgress?.urls_to_scrape || 0}
-                  </span>
-                </div>
-                {(jobProgress?.urls_to_scrape || 0) > 0 && (
-                  <div className="ml-11">
-                    <Progress 
-                      value={((jobProgress?.pages_scraped || 0) / (jobProgress?.urls_to_scrape || 1)) * 100} 
-                      className="h-1.5" 
-                    />
-                  </div>
-                )}
-                {jobProgress?.current_url && jobProgress.status === 'scraping' && (
-                  <p className="ml-11 text-xs text-muted-foreground truncate max-w-[280px]">
-                    {jobProgress.current_url}
-                  </p>
-                )}
+            {/* Stats Grid */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold text-primary">{jobProgress?.products_found || 0}</div>
+                <div className="text-xs text-muted-foreground">Found</div>
               </div>
-
-              {/* Step 3: Products Found */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className={`p-2 rounded-full ${(jobProgress?.products_found || 0) > 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                    <Package className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Products Found</p>
-                    <p className="text-muted-foreground text-xs">Unique products discovered</p>
-                  </div>
-                  <span className="font-mono text-sm font-medium text-primary">
-                    {jobProgress?.products_found || 0}
-                  </span>
-                </div>
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold text-green-600">{jobProgress?.products_inserted || 0}</div>
+                <div className="text-xs text-muted-foreground">Saved</div>
               </div>
-
-              {/* Step 4: Inserting */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className={`p-2 rounded-full ${jobProgress?.status === 'inserting' || jobProgress?.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-muted text-muted-foreground'}`}>
-                    <Database className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Products Saved</p>
-                    <p className="text-muted-foreground text-xs">Added to catalog</p>
-                  </div>
-                  <span className="font-mono text-sm font-medium text-green-600">
-                    {jobProgress?.products_inserted || 0}
-                  </span>
-                </div>
-                {jobProgress?.status === 'inserting' && (
-                  <div className="ml-11">
-                    <Progress value={undefined} className="h-1.5" />
-                  </div>
-                )}
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold text-amber-600">{jobProgress?.pages_failed || 0}</div>
+                <div className="text-xs text-muted-foreground">Failed</div>
               </div>
             </div>
 
-            {/* Errors */}
-            {(jobProgress?.pages_failed || 0) > 0 && (
-              <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <span>{jobProgress?.pages_failed} pages failed to scrape</span>
+            {/* Current URL */}
+            {jobProgress?.current_url && (isWorking || jobProgress?.status === 'scraping' || jobProgress?.status === 'working') && (
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">Current: </span>
+                <span className="truncate block">{jobProgress.current_url}</span>
               </div>
             )}
 
+            {/* Error Message */}
             {jobProgress?.error_message && (
               <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
                 {jobProgress.error_message}
               </div>
             )}
 
-            {/* Close button when done */}
-            {isJobComplete && (
-              <Button onClick={closeProgressDialog} className="w-full">
-                {jobProgress?.status === 'completed' ? 'Done' : 'Close'}
-              </Button>
-            )}
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              {isJobComplete ? (
+                <Button onClick={closeProgressDialog} className="w-full">
+                  {jobProgress?.status === 'completed' ? 'Done' : 'Close'}
+                </Button>
+              ) : isJobPlanned && !isWorking ? (
+                <>
+                  <Button onClick={handleRunImport} className="flex-1">
+                    <Play className="h-4 w-4 mr-2" />
+                    Run Import
+                  </Button>
+                  <Button variant="outline" onClick={closeProgressDialog}>
+                    Later
+                  </Button>
+                </>
+              ) : isWorking || isJobRunning ? (
+                <Button 
+                  variant="destructive" 
+                  onClick={handleStopImport}
+                  disabled={isStopping}
+                  className="w-full"
+                >
+                  {isStopping ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Square className="h-4 w-4 mr-2" />
+                  )}
+                  Stop Import
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={closeProgressDialog} className="w-full">
+                  Close
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
