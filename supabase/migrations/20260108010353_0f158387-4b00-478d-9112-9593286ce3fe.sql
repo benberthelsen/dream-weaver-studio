@@ -1,0 +1,1 @@
+UPDATE suppliers SET website_url = 'https://www.hafele.com.au/en/products/furniture-door-handles/10/' WHERE slug = 'hafele';

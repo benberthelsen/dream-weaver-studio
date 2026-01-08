@@ -134,18 +134,15 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
 'hafele': {
     useCrawlFallback: true,
     productUrlPatterns: [
+      /\/products\/furniture-door-handles\//,
+      /\/products\/furniture-fittings\//,
+      /\/products\/cabinet-hardware\//,
+      /\/products\/kitchen\//,
       /\/products\/.*handle/i,
       /\/products\/.*knob/i,
-      /\/products\/.*pull/i,
-      /\/products\/furniture-fittings/,
-      /\/products\/kitchen/,
-      /\/products\/cabinet/,
-      /\/hardware\//,
-      /\/cabinet-hardware\//,
-      /\/kitchen-handles\//,
-      /\/en\/products\//,
-      /\/en\/s\//,  // Hafele search/browse pages
-      /\/p\//,  // Individual product pages
+      /\/product\/.*handle/i,
+      /\/product\/.*knob/i,
+      /\/P-\d+/,  // Individual product pages like P-00875707
     ],
     excludeUrlPatterns: [
       /\/cart/,
@@ -159,14 +156,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\.pdf$/,
       /\/service/,
       /\/showroom/,
+      /\/information\//,
     ],
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
-    skipAuFilter: true,  // hafele.com.au
+    skipAuFilter: true,
     seedUrls: [
-      '/en/products/',
-      '/en/s/handles/',
-      '/en/s/knobs/',
-      '/en/s/furniture-fittings/',
+      '/en/products/furniture-door-handles/10/',
+      '/en/products/furniture-fittings/',
     ],
   },
   'caesarstone': {
