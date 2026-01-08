@@ -634,10 +634,21 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
     }
 
     const runNextBatch = async () => {
-      // Re-check isWorking before calling (could have been cancelled)
-      if (!isWorking) return;
+      // Re-check conditions before calling (could have been cancelled or state changed)
+      if (!isWorking || !activeJobId || !jobProgress) {
+        console.log('runNextBatch skipped - conditions not met:', { isWorking, activeJobId: !!activeJobId, jobProgress: !!jobProgress });
+        return;
+      }
+      
+      // Double-check urls_queued is valid
+      if ((jobProgress.urls_queued || 0) <= 0) {
+        console.log('runNextBatch skipped - no URLs queued');
+        setIsWorking(false);
+        return;
+      }
       
       try {
+        console.log('Running work batch for job:', activeJobId);
         const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
           body: { 
             supplierId: supplier.id,
