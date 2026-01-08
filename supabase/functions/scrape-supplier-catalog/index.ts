@@ -1371,6 +1371,339 @@ async function linkScrapeFallback(url: string, firecrawlKey: string, baseUrl: st
   }
 }
 
+// ============================================================================
+// WORK MODE HANDLER - Process batch of queued URLs
+// ============================================================================
+
+async function handleWorkMode(
+  supabase: any,
+  jobId: string,
+  batchSize: number,
+  supplier: any,
+  supplierSlug: string,
+  config: SupplierConfig,
+  firecrawlKey: string
+): Promise<Response> {
+  console.log(`WORK MODE: Processing batch of ${batchSize} URLs for job ${jobId}`);
+  
+  // Get job info
+  const { data: job, error: jobError } = await supabase
+    .from('scrape_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .single();
+  
+  if (jobError || !job) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Job not found' }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Check if job is cancelled
+  if (job.status === 'cancelled') {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Job was cancelled', jobId }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Get next batch of pending URLs
+  const { data: pendingUrls, error: urlsError } = await supabase
+    .from('scrape_job_urls')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('status', 'pending')
+    .order('created_at')
+    .limit(batchSize);
+  
+  if (urlsError) {
+    console.error('Failed to get pending URLs:', urlsError);
+    return new Response(
+      JSON.stringify({ success: false, error: 'Failed to get pending URLs' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  if (!pendingUrls || pendingUrls.length === 0) {
+    // No more URLs to process - mark job as complete
+    const { data: stats } = await supabase
+      .from('scrape_job_urls')
+      .select('status, products_inserted')
+      .eq('job_id', jobId);
+    
+    const totalInserted = stats?.reduce((sum: number, u: any) => sum + (u.products_inserted || 0), 0) || 0;
+    const completedCount = stats?.filter((u: any) => u.status === 'completed').length || 0;
+    const failedCount = stats?.filter((u: any) => u.status === 'failed').length || 0;
+    
+    await supabase
+      .from('scrape_jobs')
+      .update({
+        status: 'completed',
+        urls_completed: completedCount,
+        pages_scraped: completedCount,
+        pages_failed: failedCount,
+        products_inserted: totalInserted,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        jobId,
+        status: 'completed',
+        urlsRemaining: 0,
+        totalInserted,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Update job status
+  await supabase
+    .from('scrape_jobs')
+    .update({ status: 'scraping', current_url: pendingUrls[0].url })
+    .eq('id', jobId);
+  
+  // Parse base URL from first URL
+  let baseUrl: string;
+  try {
+    const urlObj = new URL(pendingUrls[0].url);
+    baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+  } catch {
+    baseUrl = '';
+  }
+  
+  // Category mapping
+  const CATEGORY_IDS = {
+    stoneBenchtops: '33f04a97-fba7-4a67-9ea7-84da822334ae',
+    handles: 'cd6ca340-a52e-409f-80e9-e969ba285944',
+    laminates: 'cf281fc3-3de5-4579-84e0-0913baad7cef',
+    edgeProfiles: 'a1795291-c26e-4244-9111-b7b3b40c71d9',
+  };
+  
+  const getCategoryId = (slug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
+    if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(slug)) {
+      return CATEGORY_IDS.stoneBenchtops;
+    }
+    if (slug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
+      return CATEGORY_IDS.handles;
+    }
+    if (['engineered_stone', 'quartz', 'ultra_compact', 'solid_surface'].includes(productType) || usageTypes.includes('bench_tops')) {
+      return CATEGORY_IDS.stoneBenchtops;
+    }
+    if (usageTypes.includes('kicks') || usageTypes.includes('splashbacks')) {
+      return CATEGORY_IDS.edgeProfiles;
+    }
+    return CATEGORY_IDS.laminates;
+  };
+  
+  let batchInserted = 0;
+  let batchProcessed = 0;
+  let batchFailed = 0;
+  
+  // Process each URL in the batch
+  for (const urlRecord of pendingUrls) {
+    const pageUrl = urlRecord.url;
+    console.log(`Processing: ${pageUrl}`);
+    
+    // Mark as processing
+    await supabase
+      .from('scrape_job_urls')
+      .update({ status: 'processing' })
+      .eq('id', urlRecord.id);
+    
+    await supabase
+      .from('scrape_jobs')
+      .update({ current_url: pageUrl })
+      .eq('id', jobId);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Try JSON extraction first
+      const jsonResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: pageUrl,
+          formats: ['json'],
+          jsonOptions: {
+            schema: {
+              type: 'object',
+              properties: {
+                products: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      image_url: { type: 'string' },
+                      color: { type: 'string' },
+                      material: { type: 'string' },
+                    },
+                    required: ['name', 'image_url']
+                  },
+                }
+              },
+              required: ['products']
+            },
+            prompt: `Extract all product colours or finishes from this ${supplier.name} catalogue page.`
+          },
+        }),
+      }, 2, 3000);
+
+      const jsonData = await jsonResponse.json();
+      let extractedProducts: ScrapedProduct[] = [];
+      
+      if (jsonResponse.ok && jsonData.data?.json?.products) {
+        for (const p of jsonData.data.json.products) {
+          if (p.name && p.image_url) {
+            let imageUrl = p.image_url;
+            if (!imageUrl.startsWith('http')) {
+              imageUrl = baseUrl + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
+            }
+            extractedProducts.push({
+              name: p.name,
+              image_url: imageUrl,
+              color: p.color || p.name,
+              material: p.material,
+              source_url: pageUrl,
+            });
+          }
+        }
+      }
+      
+      // HTML fallback if needed
+      if (extractedProducts.length < 3) {
+        const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: pageUrl,
+            formats: ['html'],
+            onlyMainContent: false,
+            waitFor: config.scrapeOptions?.waitFor,
+            headers: config.scrapeOptions?.headers,
+          }),
+        }, 2, 3000);
+
+        const htmlData = await htmlResponse.json();
+        if (htmlResponse.ok && htmlData.data?.html) {
+          const htmlProducts = extractProductsFromHtml(htmlData.data.html, pageUrl, baseUrl, supplierSlug);
+          if (htmlProducts.length > extractedProducts.length) {
+            extractedProducts = htmlProducts;
+          }
+        }
+      }
+      
+      // Filter and insert products
+      let urlInserted = 0;
+      for (const product of extractedProducts) {
+        if (!isValidProductName(product.name)) continue;
+        
+        // Hafele filter
+        if (supplier.slug === 'hafele') {
+          const nameLower = product.name.toLowerCase();
+          if (!nameLower.includes('handle') && !nameLower.includes('pull') && !nameLower.includes('knob')) {
+            continue;
+          }
+        }
+        
+        const classification = detectProductClassification(product.source_url, product.name, supplier);
+        const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
+        
+        const { error } = await supabase
+          .from('catalog_items')
+          .upsert({
+            supplier_id: supplier.id,
+            category_id: categoryId,
+            name: product.name,
+            image_url: product.image_url,
+            color: product.color,
+            material: product.material,
+            source_url: product.source_url,
+            product_type: classification.product_type,
+            thickness: classification.thickness,
+            usage_types: classification.usage_types,
+            is_active: true,
+            last_synced_at: new Date().toISOString(),
+          }, {
+            onConflict: 'supplier_id,name',
+            ignoreDuplicates: false,
+          });
+        
+        if (!error) urlInserted++;
+      }
+      
+      // Mark URL as completed
+      await supabase
+        .from('scrape_job_urls')
+        .update({
+          status: 'completed',
+          products_found: extractedProducts.length,
+          products_inserted: urlInserted,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', urlRecord.id);
+      
+      batchInserted += urlInserted;
+      batchProcessed++;
+      
+    } catch (error) {
+      console.error(`Error processing ${pageUrl}:`, error);
+      await supabase
+        .from('scrape_job_urls')
+        .update({
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', urlRecord.id);
+      batchFailed++;
+    }
+  }
+  
+  // Update job stats
+  const { data: remainingUrls } = await supabase
+    .from('scrape_job_urls')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('status', 'pending');
+  
+  const urlsRemaining = remainingUrls?.length || 0;
+  
+  await supabase
+    .from('scrape_jobs')
+    .update({
+      pages_scraped: (job.pages_scraped || 0) + batchProcessed,
+      pages_failed: (job.pages_failed || 0) + batchFailed,
+      products_inserted: (job.products_inserted || 0) + batchInserted,
+      urls_completed: (job.urls_completed || 0) + batchProcessed + batchFailed,
+    })
+    .eq('id', jobId);
+  
+  return new Response(
+    JSON.stringify({
+      success: true,
+      jobId,
+      status: urlsRemaining > 0 ? 'in_progress' : 'completed',
+      batchProcessed,
+      batchFailed,
+      batchInserted,
+      urlsRemaining,
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -1385,15 +1718,34 @@ Deno.serve(async (req) => {
   try {
     const { supplierId, url, options } = await req.json();
     const isDryRun = options?.dryRun === true;
+    const mode = options?.mode || 'full';  // 'full', 'plan', or 'work'
+    const existingJobId = options?.jobId;  // For 'work' mode
+    const batchSize = options?.batchSize || 10;  // URLs to process per batch
 
-    if (!supplierId || !url) {
+    if (!supplierId) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Supplier ID and URL are required' }),
+        JSON.stringify({ success: false, error: 'Supplier ID is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    console.log(`Starting ${isDryRun ? 'DRY RUN' : 'LIVE'} scrape for supplierId=${supplierId}`);
+    // For 'work' mode, jobId is required
+    if (mode === 'work' && !existingJobId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Job ID is required for work mode' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // URL is required for full and plan modes
+    if ((mode === 'full' || mode === 'plan') && !url) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'URL is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`Starting ${isDryRun ? 'DRY RUN' : mode.toUpperCase()} scrape for supplierId=${supplierId}`);
 
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
@@ -1420,6 +1772,13 @@ Deno.serve(async (req) => {
     const supplierSlug = supplier.slug?.toLowerCase() || '';
     const config = SUPPLIER_CONFIGS[supplierSlug] || {};
 
+    // =========================================================================
+    // WORK MODE: Process next batch of URLs from existing job
+    // =========================================================================
+    if (mode === 'work') {
+      return await handleWorkMode(supabase, existingJobId, batchSize, supplier, supplierSlug, config, firecrawlKey);
+    }
+
     // For dry run, skip creating a job
     let jobId: string | null = null;
     if (!isDryRun) {
@@ -1428,7 +1787,8 @@ Deno.serve(async (req) => {
         .from('scrape_jobs')
         .insert({
           supplier_id: supplierId,
-          status: 'mapping',
+          status: mode === 'plan' ? 'planning' : 'mapping',
+          mode: mode,
           started_at: new Date().toISOString(),
         })
         .select()
@@ -1936,6 +2296,36 @@ Deno.serve(async (req) => {
     const insertedProducts: any[] = [];
     const insertLimit = options?.insertLimit || 500;
     
+    // Category mapping based on supplier and product type
+    const CATEGORY_IDS = {
+      stoneBenchtops: '33f04a97-fba7-4a67-9ea7-84da822334ae',
+      handles: 'cd6ca340-a52e-409f-80e9-e969ba285944',
+      laminates: 'cf281fc3-3de5-4579-84e0-0913baad7cef',
+      edgeProfiles: 'a1795291-c26e-4244-9111-b7b3b40c71d9',
+    };
+    
+    // Determine category based on supplier and product type
+    const getCategoryId = (supplierSlug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
+      // Stone suppliers
+      if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(supplierSlug)) {
+        return CATEGORY_IDS.stoneBenchtops;
+      }
+      // Hardware suppliers
+      if (supplierSlug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
+        return CATEGORY_IDS.handles;
+      }
+      // Stone product types
+      if (['engineered_stone', 'quartz', 'ultra_compact', 'solid_surface'].includes(productType) || usageTypes.includes('bench_tops')) {
+        return CATEGORY_IDS.stoneBenchtops;
+      }
+      // Edge/kick/splashback -> Edge Profiles
+      if (usageTypes.includes('kicks') || usageTypes.includes('splashbacks')) {
+        return CATEGORY_IDS.edgeProfiles;
+      }
+      // Default to Laminates (boards, laminates, veneers, doors, panels)
+      return CATEGORY_IDS.laminates;
+    };
+    
     for (const product of uniqueProducts.slice(0, insertLimit)) {
       try {
         // Detect product classification
@@ -1944,11 +2334,20 @@ Deno.serve(async (req) => {
           product.name,
           supplier
         );
+        
+        // Get appropriate category ID
+        const categoryId = getCategoryId(
+          supplierSlug, 
+          supplier.category, 
+          classification.product_type, 
+          classification.usage_types
+        );
 
         const { data, error } = await supabase
           .from('catalog_items')
           .upsert({
             supplier_id: supplierId,
+            category_id: categoryId,  // Always set category_id
             name: product.name,
             image_url: product.image_url,
             color: product.color,
