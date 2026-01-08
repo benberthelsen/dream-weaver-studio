@@ -614,18 +614,28 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   // Auto-run work batches when in working mode
   useEffect(() => {
     if (!isWorking || !activeJobId || !jobProgress) return;
-    if (jobProgress.status === 'completed' || jobProgress.status === 'failed' || jobProgress.status === 'cancelled') {
+    
+    // Stop if job is in a terminal state
+    if (['completed', 'failed', 'cancelled'].includes(jobProgress.status)) {
       setIsWorking(false);
+      return;
+    }
+
+    // Only run work batches on 'planned' or 'scraping' status
+    if (!['planned', 'scraping'].includes(jobProgress.status)) {
       return;
     }
 
     // Only continue if there are queued URLs left
     const queuedLeft = (jobProgress.urls_queued || 0) - (jobProgress.urls_completed || 0);
-    if (queuedLeft <= 0 && jobProgress.status !== 'planned') {
+    if (queuedLeft <= 0 && jobProgress.status === 'scraping') {
       return;
     }
 
     const runNextBatch = async () => {
+      // Re-check isWorking before calling (could have been cancelled)
+      if (!isWorking) return;
+      
       try {
         const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
           body: { 
@@ -634,6 +644,12 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
             options: { mode: 'work', batchSize: 5 }
           },
         });
+
+        // Handle cancelled job gracefully
+        if (error?.message?.includes('cancelled') || data?.error?.includes('cancelled')) {
+          setIsWorking(false);
+          return;
+        }
 
         if (error) {
           console.error('Work batch failed:', error);
@@ -646,6 +662,8 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
         }
       } catch (err) {
         console.error('Work batch error:', err);
+        // Stop on network errors
+        setIsWorking(false);
       }
     };
 
