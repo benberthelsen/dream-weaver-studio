@@ -536,14 +536,15 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   const [isStopping, setIsStopping] = useState(false);
   const { mutate: deleteSupplier, isPending: isDeleting } = useDeleteSupplier();
 
-  // Check for existing active job on mount
+  // Check for existing active job on mount - only new pipeline jobs with queued URLs
   useEffect(() => {
     const checkActiveJob = async () => {
       const { data } = await supabase
         .from("scrape_jobs")
         .select("*")
         .eq("supplier_id", supplier.id)
-        .in("status", ["pending", "mapping", "scraping", "planned", "working"])
+        .in("status", ["planned", "working", "scraping"])
+        .gt("urls_queued", 0)  // Only jobs with queued URLs (new pipeline)
         .order("created_at", { ascending: false })
         .limit(1);
       
