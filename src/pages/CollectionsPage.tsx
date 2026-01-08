@@ -89,7 +89,11 @@ export default function CollectionsPage() {
   }, [suppliers, selectedCategory, filteredItems]);
 
   const handleSupplierClick = (supplierId: string) => {
-    setSelectedSupplier(selectedSupplier === supplierId ? null : supplierId);
+    setSelectedSupplier(supplierId);
+    // Scroll to products section
+    setTimeout(() => {
+      document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const clearFilters = () => {
@@ -195,7 +199,7 @@ export default function CollectionsPage() {
         </div>
 
         {/* Products Grid */}
-        <div>
+        <div id="products-section">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">
               {selectedSupplierData
