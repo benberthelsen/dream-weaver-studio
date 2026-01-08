@@ -42,6 +42,11 @@ interface SupplierConfig {
   seedUrls?: string[];  // Fallback URLs to scrape when no product URLs found
   subBrandExcludePatterns?: RegExp[];  // Extra patterns to exclude for sub-brands
   requireBrandInUrl?: boolean;  // For sub-brands: require the brand name to appear in URL
+  scrapeOptions?: {  // Firecrawl options for JS-heavy/cookie-gated sites
+    waitFor?: number;
+    headers?: Record<string, string>;
+    actions?: Array<{ type: string; selector?: string; text?: string }>;
+  };
 }
 
 const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
@@ -131,12 +136,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     skipAuFilter: true,
     productUrlPatterns: [/\/products\//, /\/colours\//, /\/range\//],
   },
-'hafele': {
+  'hafele': {
     useCrawlFallback: true,
     productUrlPatterns: [
       /\/products\/furniture-door-handles\//,
       /\/P-\d+/,  // Individual product pages like P-00875707
       /SearchParameter.*handles/i,  // Filtered category URLs
+      /handles_knobs_product_type/i,  // Filter parameter for handles
     ],
     excludeUrlPatterns: [
       /\/cart/i,
@@ -164,9 +170,22 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     ],
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
     skipAuFilter: true,
+    // Use filtered category URLs that show specific handle types
     seedUrls: [
+      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DBar%2BPulls',
+      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DKnobs',
+      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DWire%2BPulls',
       '/en/products/furniture-door-handles/10/',
     ],
+    // Firecrawl scrape options for JS-heavy/cookie-gated sites
+    scrapeOptions: {
+      waitFor: 2000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-AU,en;q=0.9',
+      },
+    },
   },
   'caesarstone': {
     productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
@@ -1365,6 +1384,7 @@ Deno.serve(async (req) => {
 
   try {
     const { supplierId, url, options } = await req.json();
+    const isDryRun = options?.dryRun === true;
 
     if (!supplierId || !url) {
       return new Response(
@@ -1372,6 +1392,8 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`Starting ${isDryRun ? 'DRY RUN' : 'LIVE'} scrape for supplierId=${supplierId}`);
 
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
@@ -1398,21 +1420,25 @@ Deno.serve(async (req) => {
     const supplierSlug = supplier.slug?.toLowerCase() || '';
     const config = SUPPLIER_CONFIGS[supplierSlug] || {};
 
-    // Create scrape job for progress tracking
-    const { data: job, error: jobError } = await supabase
-      .from('scrape_jobs')
-      .insert({
-        supplier_id: supplierId,
-        status: 'mapping',
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    // For dry run, skip creating a job
+    let jobId: string | null = null;
+    if (!isDryRun) {
+      // Create scrape job for progress tracking
+      const { data: job, error: jobError } = await supabase
+        .from('scrape_jobs')
+        .insert({
+          supplier_id: supplierId,
+          status: 'mapping',
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (jobError) {
-      console.error('Failed to create job:', jobError);
-    } else {
-      jobId = job.id;
+      if (jobError) {
+        console.error('Failed to create job:', jobError);
+      } else {
+        jobId = job.id;
+      }
     }
 
     // Helper to update job progress
@@ -1582,8 +1608,129 @@ Deno.serve(async (req) => {
       productUrls = [url];
     }
     
-    const maxPages = options?.maxPages || 50;
+    const maxPages = isDryRun ? Math.min(options?.maxPages || 3, 3) : (options?.maxPages || 50);
     const urlsToScrape = productUrls.slice(0, maxPages);
+    
+    // DRY RUN: Return diagnostics without inserting data
+    if (isDryRun) {
+      console.log('DRY RUN: Sampling first 3 URLs for extraction test...');
+      
+      // Sample extraction from first 1-3 URLs
+      const sampleProducts: ScrapedProduct[] = [];
+      const sampleScrapedUrls: string[] = [];
+      const sampleFailedUrls: string[] = [];
+      const sampleWarnings: string[] = [];
+      
+      for (let i = 0; i < Math.min(urlsToScrape.length, 3); i++) {
+        const pageUrl = urlsToScrape[i];
+        console.log(`DRY RUN: Sampling (${i + 1}): ${pageUrl}`);
+        
+        try {
+          const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: pageUrl,
+              formats: ['html', 'markdown'],
+              onlyMainContent: false,
+              waitFor: config.scrapeOptions?.waitFor,
+              headers: config.scrapeOptions?.headers,
+            }),
+          }, 2, 3000);
+
+          const htmlData = await htmlResponse.json();
+          
+          if (htmlResponse.ok && htmlData.data) {
+            const html = htmlData.data.html || '';
+            const markdown = htmlData.data.markdown || '';
+            const metadata = htmlData.data.metadata || {};
+            
+            // Check for cookie/session gate warnings
+            if (html.includes('cookies disabled') || html.includes('logged off for security')) {
+              sampleWarnings.push(`⚠️ Cookie/session gate detected on ${pageUrl}`);
+            }
+            if (metadata.statusCode && metadata.statusCode !== 200) {
+              sampleWarnings.push(`⚠️ HTTP ${metadata.statusCode} on ${pageUrl}`);
+            }
+            
+            // Check if this is an error page
+            const errorCheck = isErrorPage(html);
+            if (errorCheck.isError) {
+              sampleWarnings.push(`⚠️ Error page detected on ${pageUrl}: ${errorCheck.reason}`);
+              sampleFailedUrls.push(pageUrl);
+              continue;
+            }
+            
+            // Extract products for sample
+            const htmlProducts = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
+            if (htmlProducts.length > 0) {
+              sampleProducts.push(...htmlProducts.slice(0, 10));
+              sampleScrapedUrls.push(pageUrl);
+            } else {
+              sampleWarnings.push(`⚠️ No products extracted from ${pageUrl}`);
+              sampleFailedUrls.push(pageUrl);
+            }
+          } else {
+            sampleWarnings.push(`⚠️ Failed to fetch ${pageUrl}: ${htmlData.error || 'unknown error'}`);
+            sampleFailedUrls.push(pageUrl);
+          }
+        } catch (error) {
+          sampleWarnings.push(`⚠️ Error sampling ${pageUrl}: ${error instanceof Error ? error.message : 'unknown'}`);
+          sampleFailedUrls.push(pageUrl);
+        }
+      }
+      
+      // Build rejection stats
+      const rejectionStats = {
+        totalDiscovered: allUrls.length,
+        productUrlsKept: productUrls.length,
+        rejected: allUrls.length - productUrls.length,
+      };
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          dryRun: true,
+          supplier: supplier.name,
+          supplierSlug,
+          hasConfig: !!SUPPLIER_CONFIGS[supplierSlug],
+          configDetails: config ? {
+            hasSeedUrls: !!(config.seedUrls && config.seedUrls.length > 0),
+            hasExcludePatterns: !!(config.excludeUrlPatterns && config.excludeUrlPatterns.length > 0),
+            skipAuFilter: config.skipAuFilter,
+            useCrawlFallback: config.useCrawlFallback,
+          } : null,
+          urlDiscovery: {
+            totalDiscovered: allUrls.length,
+            productUrlsKept: productUrls.length,
+            rejectedCount: allUrls.length - productUrls.length,
+            discoveredUrlsSample: allUrls.slice(0, 30),
+            productUrlsSample: productUrls.slice(0, 30),
+          },
+          extraction: {
+            urlsSampled: sampleScrapedUrls.length + sampleFailedUrls.length,
+            successfulPages: sampleScrapedUrls.length,
+            failedPages: sampleFailedUrls.length,
+            productsFound: sampleProducts.length,
+            productsSample: sampleProducts.slice(0, 20).map(p => ({
+              name: p.name,
+              image_url: p.image_url,
+              source_url: p.source_url,
+            })),
+          },
+          warnings: sampleWarnings,
+          recommendation: sampleProducts.length > 0 
+            ? `✅ Ready to import. Found ${sampleProducts.length} sample products from ${sampleScrapedUrls.length} pages.`
+            : sampleWarnings.length > 0
+            ? `⚠️ Issues detected. Review warnings above before importing.`
+            : `❌ No products found. Check URL patterns or seed URLs.`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     await updateJob({ 
       status: 'scraping', 

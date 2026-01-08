@@ -522,6 +522,9 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<ScrapeJob | null>(null);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [showTestDialog, setShowTestDialog] = useState(false);
+  const [testResults, setTestResults] = useState<any>(null);
+  const [isTesting, setIsTesting] = useState(false);
   const { mutate: scrapeCatalog, isPending } = useScrapeSupplierCatalog();
   const { mutate: deleteSupplier, isPending: isDeleting } = useDeleteSupplier();
 
@@ -600,6 +603,38 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
         },
       }
     );
+  };
+
+  const handleTestScrape = async () => {
+    if (!scrapeUrl) {
+      toast.error("Please enter a URL to test");
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResults(null);
+    setShowTestDialog(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+        body: { 
+          supplierId: supplier.id, 
+          url: scrapeUrl,
+          options: { dryRun: true, maxPages: 3 }
+        },
+      });
+
+      if (error) throw error;
+      setTestResults(data);
+    } catch (error) {
+      console.error('Test scrape failed:', error);
+      setTestResults({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleDelete = () => {
@@ -685,25 +720,205 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
               placeholder="https://example.com/products"
             />
           </div>
-          <Button 
-            onClick={handleScrape}
-            disabled={isPending}
-            className="w-full"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Import Catalog
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={handleTestScrape}
+              disabled={isTesting || !scrapeUrl}
+              className="flex-1"
+            >
+              {isTesting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <FileSearch className="h-4 w-4 mr-2" />
+                  Test
+                </>
+              )}
+            </Button>
+            <Button 
+              onClick={handleScrape}
+              disabled={isPending}
+              className="flex-1"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Import
+                </>
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Test Results Dialog */}
+      <Dialog open={showTestDialog} onOpenChange={setShowTestDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSearch className="h-5 w-5" />
+              Test Scrape Results - {supplier.name}
+            </DialogTitle>
+            <DialogDescription>
+              Dry run diagnostics (no data saved)
+            </DialogDescription>
+          </DialogHeader>
+
+          {isTesting ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : testResults ? (
+            <div className="space-y-4 py-2">
+              {/* Recommendation */}
+              <div className={`p-3 rounded-lg text-sm ${
+                testResults.recommendation?.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-200' :
+                testResults.recommendation?.startsWith('⚠️') ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {testResults.recommendation || testResults.error || 'Unknown result'}
+              </div>
+
+              {/* Config Status */}
+              {testResults.hasConfig !== undefined && (
+                <div className="flex items-center gap-2 text-sm">
+                  {testResults.hasConfig ? (
+                    <Badge variant="default" className="bg-green-500">Has Config</Badge>
+                  ) : (
+                    <Badge variant="secondary">Generic Config</Badge>
+                  )}
+                  <span className="text-muted-foreground">Supplier: {testResults.supplierSlug}</span>
+                </div>
+              )}
+
+              {/* URL Discovery Stats */}
+              {testResults.urlDiscovery && (
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      URL Discovery
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-2xl font-bold">{testResults.urlDiscovery.totalDiscovered}</div>
+                        <div className="text-xs text-muted-foreground">Total Found</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-green-600">{testResults.urlDiscovery.productUrlsKept}</div>
+                        <div className="text-xs text-muted-foreground">Product URLs</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-muted-foreground">{testResults.urlDiscovery.rejectedCount}</div>
+                        <div className="text-xs text-muted-foreground">Rejected</div>
+                      </div>
+                    </div>
+                    {testResults.urlDiscovery.productUrlsSample?.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium mb-1">Sample Product URLs:</p>
+                        <div className="max-h-24 overflow-y-auto text-xs text-muted-foreground space-y-0.5">
+                          {testResults.urlDiscovery.productUrlsSample.slice(0, 10).map((url: string, i: number) => (
+                            <div key={i} className="truncate">{url}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Extraction Stats */}
+              {testResults.extraction && (
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Product Extraction
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-2xl font-bold">{testResults.extraction.urlsSampled}</div>
+                        <div className="text-xs text-muted-foreground">Pages Tested</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-green-600">{testResults.extraction.successfulPages}</div>
+                        <div className="text-xs text-muted-foreground">Successful</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-primary">{testResults.extraction.productsFound}</div>
+                        <div className="text-xs text-muted-foreground">Products Found</div>
+                      </div>
+                    </div>
+                    {testResults.extraction.productsSample?.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium mb-2">Sample Products:</p>
+                        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                          {testResults.extraction.productsSample.slice(0, 8).map((product: any, i: number) => (
+                            <div key={i} className="flex items-center gap-2 p-2 bg-muted/50 rounded text-xs">
+                              {product.image_url && (
+                                <img 
+                                  src={product.image_url} 
+                                  alt={product.name}
+                                  className="w-8 h-8 object-cover rounded"
+                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                />
+                              )}
+                              <span className="truncate flex-1">{product.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Warnings */}
+              {testResults.warnings?.length > 0 && (
+                <Card className="border-amber-200">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm flex items-center gap-2 text-amber-600">
+                      <AlertCircle className="h-4 w-4" />
+                      Warnings ({testResults.warnings.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="space-y-1 text-xs text-amber-700">
+                      {testResults.warnings.map((warning: string, i: number) => (
+                        <div key={i}>{warning}</div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTestDialog(false)}>
+              Close
+            </Button>
+            {testResults?.recommendation?.startsWith('✅') && (
+              <Button onClick={() => { setShowTestDialog(false); handleScrape(); }}>
+                Run Full Import
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Progress Dialog */}
       <Dialog open={showProgressDialog} onOpenChange={(open) => {
