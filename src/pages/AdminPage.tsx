@@ -640,8 +640,8 @@ function SupplierCard({ supplier }: { supplier: SupplierWithCount }) {
           // Don't stop on individual batch errors, the job will track them
         }
 
-        // Check if we should continue
-        if (data?.complete) {
+        // Check if we should continue based on response
+        if (data?.status === 'completed' || data?.urlsRemaining === 0) {
           setIsWorking(false);
         }
       } catch (err) {

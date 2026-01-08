@@ -2092,6 +2092,52 @@ Deno.serve(async (req) => {
       );
     }
     
+    // =========================================================================
+    // PLAN MODE: Queue URLs for batch processing, don't scrape yet
+    // =========================================================================
+    if (mode === 'plan') {
+      console.log(`PLAN MODE: Queueing ${urlsToScrape.length} URLs for batch processing`);
+      
+      // Insert URLs into scrape_job_urls queue
+      const urlInserts = urlsToScrape.map(url => ({
+        job_id: jobId,
+        url: url,
+        status: 'pending',
+      }));
+      
+      if (urlInserts.length > 0 && jobId) {
+        const { error: urlsError } = await supabase
+          .from('scrape_job_urls')
+          .insert(urlInserts);
+        
+        if (urlsError) {
+          console.error('Failed to queue URLs:', urlsError);
+        }
+      }
+      
+      // Update job with queued count and set status to 'planned'
+      await updateJob({ 
+        status: 'planned',
+        urls_queued: urlsToScrape.length,
+        urls_to_scrape: urlsToScrape.length,
+        urls_mapped: allUrls.length,
+        urls_completed: 0,
+      });
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: 'plan',
+          jobId: jobId,
+          urlsQueued: urlsToScrape.length,
+          urlsMapped: allUrls.length,
+          message: `Queued ${urlsToScrape.length} URLs for batch processing. Call with mode='work' to start.`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // FULL MODE continues below...
     await updateJob({ 
       status: 'scraping', 
       urls_to_scrape: urlsToScrape.length,
