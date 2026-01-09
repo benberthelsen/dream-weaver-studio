@@ -236,9 +236,35 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     ],
   },
   'caesarstone': {
-    productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
-    excludeUrlPatterns: [/\/find-a-retailer/, /\/contact/, /\/blog/, /\/professional/],
-    requiredNamePatterns: [/quartz|marble|calacatta|statuario|white|grey|concrete|pearl|mist/i],
+    productUrlPatterns: [
+      /\/colours\/\d+-[a-z]/i,           // /colours/544-auralux
+      /\/collections-gallery\/\d+-[a-z]/i, // /collections-gallery/4011-cloudburst-concrete
+    ],
+    excludeUrlPatterns: [
+      /\/find-a-retailer/i,
+      /\/contact/i,
+      /\/blog/i,
+      /\/professional/i,
+      /\/cookies/i,
+      /\/announcements/i,
+      /\/cs-connect/i,
+      /\/training/i,
+      /\/about/i,
+      /\/sustainability/i,
+      /\/warranty/i,
+      /\/care-maintenance/i,
+      /\/faq/i,
+      /\/showroom/i,
+      /\/sample/i,
+      /\/perfect-pairings/i,
+      /\/privacy/i,
+      /\/terms/i,
+      /\/fabricator/i,
+      /\/architect/i,
+      /\/designer/i,
+    ],
+    seedUrls: ['/colours/'],
+    // No requiredNamePatterns - we rely on URL filtering and custom validation
   },
   'dekton': {
     productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /dekton.*colour/, /\/surfaces\//],
@@ -689,6 +715,35 @@ function isValidProductForSupplier(product: ScrapedProduct, supplierSlug: string
       console.log(`Product excluded by excludeNamePatterns: ${product.name}`);
       return false;
     }
+  }
+  
+  // Caesarstone-specific: Accept products from colour pages with product codes
+  if (supplierSlug === 'caesarstone') {
+    // Caesarstone products typically have a 3-4 digit code at the start (e.g., "516 Locura")
+    const hasProductCode = /^\d{3,4}\s/.test(product.name);
+    const isFromColourPage = urlLower.includes('/colours/') || urlLower.includes('/collections-gallery/');
+    
+    // Reject generic UI elements regardless of page
+    const caesarstoneExclusions = [
+      /^view\s/i, /^add\s/i, /^compare/i, /^download/i,
+      /^request/i, /^order/i, /^find\s/i, /^explore/i,
+      /^cookie/i, /^privacy/i, /^terms/i, /^see\s/i,
+      /^get\s/i, /^contact/i, /^subscribe/i, /^sign\s/i,
+      /^browse/i, /^filter/i, /^sort/i, /^search/i,
+    ];
+    
+    if (caesarstoneExclusions.some(p => p.test(nameLower))) {
+      console.log(`Caesarstone product rejected by exclusion: ${product.name}`);
+      return false;
+    }
+    
+    if (hasProductCode || isFromColourPage) {
+      console.log(`Caesarstone product accepted: ${product.name}`);
+      return true;
+    }
+    
+    console.log(`Caesarstone product rejected - not from colour page: ${product.name}`);
+    return false;
   }
   
   // Hafele-specific: STRICT filtering - must be a furniture handle product
