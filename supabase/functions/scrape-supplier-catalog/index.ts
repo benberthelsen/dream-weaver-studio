@@ -29,6 +29,86 @@ interface SubBrandConfig {
   thickness?: string;
 }
 
+// Brand mapping for suppliers with multiple brands
+interface BrandMapping {
+  pattern: RegExp;  // Matches URL or product name
+  brand: string;    // Brand name to assign
+}
+
+const BRAND_MAPPINGS: Record<string, BrandMapping[]> = {
+  'forestone': [
+    { pattern: /\/our-brands\/egger|\/egger\//i, brand: 'EGGER' },
+    { pattern: /\/our-brands\/meganite|\/meganite\//i, brand: 'Meganite' },
+    { pattern: /\/our-brands\/antegra|\/antegra\//i, brand: 'Antegra' },
+    { pattern: /\/our-brands\/designer-ply|\/designer-ply\//i, brand: 'Designer Ply' },
+    { pattern: /\/our-brands\/designer-one|\/designerone\//i, brand: 'DesignerONE' },
+    { pattern: /\/our-brands\/designer-osb|\/designer-osb\//i, brand: 'Designer OSB' },
+    { pattern: /\/our-brands\/designergroove|\/designergroove\//i, brand: 'Designer Groove' },
+    { pattern: /\/our-brands\/wallart|\/wallart\//i, brand: 'WallART' },
+    { pattern: /\/our-brands\/austral|\/austral\//i, brand: 'Austral Plywoods' },
+    { pattern: /\/our-brands\/selex|\/selex\//i, brand: 'Selex' },
+    { pattern: /\/our-brands\/weathertex|\/weathertex\//i, brand: 'Weathertex' },
+    { pattern: /\/our-brands\/shadowclad|\/shadowclad\//i, brand: 'ShadowClad' },
+    // EGGER product codes: U702, H1212 ST33, etc.
+    { pattern: /^[UH]\d{3,4}\s|ST\d{2}$/i, brand: 'EGGER' },
+  ],
+  'laminex': [
+    { pattern: /formica/i, brand: 'Formica' },
+    { pattern: /essastone/i, brand: 'Essastone' },
+    // Default will be 'Laminex'
+  ],
+  'polytec': [
+    { pattern: /ravine/i, brand: 'Ravine' },
+    { pattern: /createc/i, brand: 'Createc' },
+    { pattern: /seratone/i, brand: 'Seratone' },
+    { pattern: /venette/i, brand: 'Venette' },
+    { pattern: /prime\s*oak|primeoak/i, brand: 'Prime Oak' },
+    { pattern: /woodmatt/i, brand: 'Woodmatt' },
+    // Default will be 'Polytec Melamine'
+  ],
+  'hafele': [
+    // Hafele is a single brand
+    { pattern: /.*/, brand: 'Häfele' },
+  ],
+  'caesarstone': [
+    { pattern: /.*/, brand: 'Caesarstone' },
+  ],
+  'dekton': [
+    { pattern: /.*/, brand: 'Dekton' },
+  ],
+  'silestone': [
+    { pattern: /.*/, brand: 'Silestone' },
+  ],
+  'smartstone': [
+    { pattern: /.*/, brand: 'Smartstone' },
+  ],
+};
+
+// Extract brand from source URL and product name
+function extractBrand(sourceUrl: string, productName: string, supplierSlug: string, supplierName: string): string {
+  const mappings = BRAND_MAPPINGS[supplierSlug];
+  if (!mappings) {
+    // No specific mappings, use supplier name as brand
+    return supplierName;
+  }
+  
+  const combined = `${sourceUrl} ${productName}`;
+  
+  for (const mapping of mappings) {
+    if (mapping.pattern.test(combined)) {
+      return mapping.brand;
+    }
+  }
+  
+  // Default brands for suppliers with multiple brands
+  if (supplierSlug === 'laminex') return 'Laminex';
+  if (supplierSlug === 'polytec') return 'Polytec Melamine';
+  if (supplierSlug === 'forestone') return 'ForestOne';
+  
+  // Fallback to supplier name
+  return supplierName;
+}
+
 // Supplier-specific configuration
 interface SupplierConfig {
   productUrlPatterns?: RegExp[];
@@ -2024,6 +2104,9 @@ async function handleWorkMode(
         const classification = detectProductClassification(product.source_url, product.name, supplier);
         const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
         
+        // Extract brand
+        const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
+        
         const { error } = await supabase
           .from('catalog_items')
           .upsert({
@@ -2031,6 +2114,7 @@ async function handleWorkMode(
             category_id: categoryId,
             name: product.name,
             image_url: finalImageUrl,
+            brand: brand,
             color: product.color,
             material: product.material,
             source_url: product.source_url,
@@ -2829,6 +2913,9 @@ Deno.serve(async (req) => {
           classification.usage_types
         );
 
+        // Extract brand
+        const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
+        
         const { data, error } = await supabase
           .from('catalog_items')
           .upsert({
@@ -2836,6 +2923,7 @@ Deno.serve(async (req) => {
             category_id: categoryId,  // Always set category_id
             name: product.name,
             image_url: product.image_url,
+            brand: brand,
             color: product.color,
             material: product.material,
             finish_type: product.finish_type,

@@ -4,8 +4,9 @@ import { ArrowLeft, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { useSuppliersWithCounts } from "@/hooks/useSuppliers";
-import { useCatalogItems } from "@/hooks/useCatalog";
+import { useCatalogItems, useBrandsForSupplier } from "@/hooks/useCatalog";
 import { CategoryTabs, SupplierCategory } from "@/components/collections/CategoryTabs";
 import { LikedPalette } from "@/components/collections/LikedPalette";
 import { ProductCard } from "@/components/collections/ProductCard";
@@ -14,12 +15,17 @@ import { SupplierCard } from "@/components/collections/SupplierCard";
 export default function CollectionsPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<SupplierCategory>("all");
+  const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: suppliers = [], isLoading: suppliersLoading } = useSuppliersWithCounts();
   
+  // Fetch brands for selected supplier
+  const { data: brandsForSupplier = [] } = useBrandsForSupplier(selectedSupplier || undefined);
+  
   const { data: items = [], isLoading: itemsLoading } = useCatalogItems({
     supplierId: selectedSupplier || undefined,
+    brand: selectedBrand || undefined,
     search: searchTerm || undefined,
   });
 
@@ -90,6 +96,7 @@ export default function CollectionsPage() {
 
   const handleSupplierClick = (supplierId: string) => {
     setSelectedSupplier(supplierId);
+    setSelectedBrand(null); // Reset brand when changing supplier
     // Scroll to products section
     setTimeout(() => {
       document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -98,6 +105,7 @@ export default function CollectionsPage() {
 
   const clearFilters = () => {
     setSelectedSupplier(null);
+    setSelectedBrand(null);
     setSearchTerm("");
   };
 
@@ -201,17 +209,55 @@ export default function CollectionsPage() {
         {/* Products Grid */}
         <div id="products-section">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">
-              {selectedSupplierData
-                ? `${selectedSupplierData.name} Products`
-                : getCategoryLabel()}
-              {filteredItems.length > 0 && (
-                <span className="text-muted-foreground font-normal ml-2">
-                  ({filteredItems.length})
-                </span>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold">
+                {selectedBrand 
+                  ? selectedBrand
+                  : selectedSupplierData
+                    ? `${selectedSupplierData.name} Products`
+                    : getCategoryLabel()}
+                {filteredItems.length > 0 && (
+                  <span className="text-muted-foreground font-normal ml-2">
+                    ({filteredItems.length})
+                  </span>
+                )}
+              </h2>
+              {selectedBrand && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setSelectedBrand(null)}
+                  className="h-6 px-2 text-xs"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear brand
+                </Button>
               )}
-            </h2>
+            </div>
           </div>
+
+          {/* Brand Filter Pills - Show when supplier is selected and has multiple brands */}
+          {selectedSupplier && brandsForSupplier.length > 1 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge
+                variant={selectedBrand === null ? "default" : "outline"}
+                className="cursor-pointer hover:bg-primary/80 transition-colors"
+                onClick={() => setSelectedBrand(null)}
+              >
+                All Brands
+              </Badge>
+              {brandsForSupplier.map((brand) => (
+                <Badge
+                  key={brand}
+                  variant={selectedBrand === brand ? "default" : "outline"}
+                  className="cursor-pointer hover:bg-primary/80 transition-colors"
+                  onClick={() => setSelectedBrand(brand)}
+                >
+                  {brand}
+                </Badge>
+              ))}
+            </div>
+          )}
 
           {itemsLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">

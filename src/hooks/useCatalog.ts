@@ -22,6 +22,7 @@ export function useCatalogItems(options?: {
   supplierId?: string; 
   rangeId?: string;
   search?: string;
+  brand?: string;
 }) {
   return useQuery({
     queryKey: ["catalog-items", options],
@@ -53,6 +54,10 @@ export function useCatalogItems(options?: {
         query = query.ilike("name", `%${options.search}%`);
       }
       
+      if (options?.brand) {
+        query = query.eq("brand", options.brand);
+      }
+      
       const { data, error } = await query;
       
       if (error) throw error;
@@ -62,5 +67,29 @@ export function useCatalogItems(options?: {
         range: ProductRange | null;
       })[];
     },
+  });
+}
+
+// Get unique brands for a supplier
+export function useBrandsForSupplier(supplierId?: string) {
+  return useQuery({
+    queryKey: ["brands-for-supplier", supplierId],
+    queryFn: async () => {
+      if (!supplierId) return [];
+      
+      const { data, error } = await supabase
+        .from("catalog_items")
+        .select("brand")
+        .eq("supplier_id", supplierId)
+        .eq("is_active", true)
+        .not("brand", "is", null);
+      
+      if (error) throw error;
+      
+      // Get unique brands
+      const uniqueBrands = [...new Set(data.map(item => item.brand))].filter(Boolean).sort();
+      return uniqueBrands as string[];
+    },
+    enabled: !!supplierId,
   });
 }
