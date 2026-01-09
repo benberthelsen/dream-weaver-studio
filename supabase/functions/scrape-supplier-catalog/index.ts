@@ -178,15 +178,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload', '.product-listing-tile img'],
     skipAuFilter: true,
     seedUrls: [
+      // Focus ONLY on Furniture Handles & Knobs category (category 11)
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=1',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=2',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=3',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=4',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=5',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=6',
-      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=7',
-      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=8',
-      '/en/products/furniture-door-handles/door-handles/13/?PageSize=48&PageNumber=1',
     ],
     scrapeOptions: {
       waitFor: 3000,
@@ -196,7 +194,46 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
         'Accept-Language': 'en-AU,en;q=0.9',
       },
     },
-    requiredNamePatterns: [/handle|pull|knob|grip|lever|flush/i],
+    // STRICT filtering - must contain furniture handle keywords
+    requiredNamePatterns: [
+      /furniture\s+handle/i,
+      /handle\s+profile/i, 
+      /flush\s+handle/i,
+      /bar\s+pull/i,
+      /bow\s+pull/i,
+      /cup\s+pull/i,
+      /wire\s+pull/i,
+      /pull\s+handle/i,
+      /d\s+pull/i,
+      /knob/i,
+      /mortise\s+pull/i,
+      /finger\s+pull/i,
+    ],
+    // Exclude non-handle products
+    excludeNamePatterns: [
+      /drawer\s+system/i,
+      /hinge/i,
+      /runner/i,
+      /slide/i,
+      /fitting/i,
+      /lock/i,
+      /latch/i,
+      /bracket/i,
+      /connector/i,
+      /stay/i,
+      /damper/i,
+      /lift/i,
+      /carousel/i,
+      /bin/i,
+      /basket/i,
+      /shelf/i,
+      /organiser/i,
+      /organizer/i,
+      /led/i,
+      /light/i,
+      /sensor/i,
+      /switch/i,
+    ],
   },
   'caesarstone': {
     productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
@@ -649,21 +686,47 @@ function isValidProductForSupplier(product: ScrapedProduct, supplierSlug: string
   // Check exclude patterns first (these override includes)
   if (config?.excludeNamePatterns) {
     if (config.excludeNamePatterns.some(p => p.test(nameLower))) {
+      console.log(`Product excluded by excludeNamePatterns: ${product.name}`);
       return false;
     }
   }
   
-  // Hafele-specific: must be a handle product
+  // Hafele-specific: STRICT filtering - must be a furniture handle product
   if (supplierSlug === 'hafele') {
-    const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
-    const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
-                                 urlLower.includes('door-handles') ||
-                                 urlLower.includes('handles-knobs') ||
-                                 urlLower.includes('/11/') ||
-                                 urlLower.includes('/13/');
-    if (!nameIsHandle && !urlIsHandleCategory) {
+    // Must contain handle-related keywords in name
+    const isHandleProduct = /furniture\s*handle|handle\s*profile|flush\s*handle|bar\s*pull|bow\s*pull|cup\s*pull|wire\s*pull|pull\s*handle|d\s*pull|knob|mortise\s*pull|finger\s*pull|extruded\s*pull|t-knob|recessed\s*grip/i.test(nameLower);
+    
+    if (!isHandleProduct) {
+      // Fallback: check for simpler patterns but only from valid categories
+      const simpleHandleMatch = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
+      const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
+                                   urlLower.includes('handles-knobs') ||
+                                   urlLower.includes('/11/');
+      
+      if (!simpleHandleMatch || !urlIsHandleCategory) {
+        console.log(`Hafele product rejected - not a furniture handle: ${product.name}`);
+        return false;
+      }
+    }
+    
+    // Extra exclusions for Hafele - things that appear on handle pages but aren't handles
+    const hafelExclusions = [
+      /drawer\s*system/i, /hinge/i, /runner/i, /slide/i,
+      /fitting/i, /lock/i, /latch/i, /bracket/i, /connector/i,
+      /stay/i, /damper/i, /lift/i, /carousel/i, /bin/i,
+      /basket/i, /shelf/i, /organiser/i, /organizer/i,
+      /led/i, /light/i, /sensor/i, /switch/i, /seal/i,
+      /^view\s/i, /^add\s/i, /^compare/i, /^show\s/i,
+      /article/i, /product\s*photo/i,
+    ];
+    
+    if (hafelExclusions.some(p => p.test(nameLower))) {
+      console.log(`Hafele product rejected by exclusion: ${product.name}`);
       return false;
     }
+    
+    console.log(`Hafele product accepted: ${product.name}`);
+    return true;
   }
   
   // Check required patterns (if specified, at least one must match)
@@ -1151,22 +1214,101 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     }
   }
   
-  // Hafele hardware patterns
+  // Hafele hardware patterns - IMPROVED to extract proper handle names
   if (supplierSlug === 'hafele') {
-    const productCards = html.matchAll(/<div[^>]*class="[^"]*(?:product|item|handle|hardware)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:h[2-4]|span|div|a)[^>]*(?:class="[^"]*(?:name|title|product-name)[^"]*")?[^>]*>([^<]{3,80})</gi);
-    for (const match of productCards) {
-      if (match[1] && match[2]) {
-        addProduct(match[2], match[1]);
+    console.log('Hafele: Starting product extraction from HTML');
+    
+    // Pattern 1: Extract from H3 links with title attributes (primary source for names)
+    // Format: ### [Product Name](url "Product Name")
+    const h3LinkPattern = /###\s*\[([^\]]+)\]\([^)]+\s+"([^"]+)"\)/gi;
+    for (const match of html.matchAll(h3LinkPattern)) {
+      // Use the title attribute value which is the clean product name
+      const productName = match[2] || match[1];
+      if (productName && /handle|pull|knob|grip|lever|flush|profile/i.test(productName)) {
+        console.log(`Hafele H3 pattern found: ${productName}`);
+        // Find associated image - look for category_view images
+        const imagePattern = new RegExp(`\\[!\\[[^\\]]*\\]\\((https://www\\.hafele\\.com\\.au/[^)]+category_view[^)]+)\\)\\]\\([^)]+/${productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[^/]*')}`, 'i');
+        const imageMatch = html.match(imagePattern);
+        if (imageMatch) {
+          addProduct(productName, imageMatch[1]);
+        }
       }
     }
     
-    // Also try anchor-based product links
-    const productLinks = html.matchAll(/<a[^>]*href="[^"]*(?:product|handle|knob)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]{3,80})</gi);
-    for (const match of productLinks) {
-      if (match[1] && match[2]) {
-        addProduct(match[2], match[1]);
+    // Pattern 2: Simpler H3 pattern without title attribute
+    // Format: ### [Product Name](url)
+    const h3SimpleLinkPattern = /###\s*\[([^\]]+)\]\([^)]+\)/gi;
+    for (const match of html.matchAll(h3SimpleLinkPattern)) {
+      const productName = match[1].trim();
+      if (productName && /handle|pull|knob|grip|lever|flush|profile/i.test(productName)) {
+        // Avoid duplicates - check if already added
+        const existingProduct = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
+        if (!existingProduct) {
+          console.log(`Hafele H3 simple pattern found: ${productName}`);
+          // We'll find images in the next pass
+        }
       }
     }
+    
+    // Pattern 3: Extract product image URLs and names together
+    // Format: [![P-XXXXX product photo](imageUrl)](productUrl)
+    // Followed by: ### [Product Name](url)
+    const productBlockPattern = /\[!\[[^\]]*product\s*photo[^\]]*\]\(([^)]+)\)\][^\[]*###\s*\[([^\]]+)\]/gi;
+    for (const match of html.matchAll(productBlockPattern)) {
+      const imageUrl = match[1];
+      const productName = match[2].trim();
+      if (imageUrl && productName && /handle|pull|knob|grip|lever|flush|profile/i.test(productName)) {
+        console.log(`Hafele block pattern found: ${productName} -> ${imageUrl.substring(0, 60)}...`);
+        addProduct(productName, imageUrl);
+      }
+    }
+    
+    // Pattern 4: Fallback - look for category_view images with alt text containing product info
+    const categoryViewPattern = /\[!\[([^\]]+)\]\((https:\/\/www\.hafele\.com\.au\/[^)]+category_view[^)]+)\)/gi;
+    for (const match of html.matchAll(categoryViewPattern)) {
+      const altText = match[1];
+      const imageUrl = match[2];
+      // The alt text is like "P-01318428 product photo" - not useful
+      // But we can try to find the product name nearby
+      if (imageUrl) {
+        // Look for the associated product name after this image
+        const afterImage = html.slice(html.indexOf(imageUrl) + imageUrl.length, html.indexOf(imageUrl) + 500);
+        const nameMatch = afterImage.match(/###\s*\[([^\]]+)\]/);
+        if (nameMatch && nameMatch[1] && /handle|pull|knob|grip|lever|flush|profile/i.test(nameMatch[1])) {
+          const productName = nameMatch[1].trim();
+          // Check if not already added
+          const key = productName.toLowerCase();
+          if (!products.find(p => p.name.toLowerCase() === key)) {
+            console.log(`Hafele category_view pattern found: ${productName}`);
+            addProduct(productName, imageUrl);
+          }
+        }
+      }
+    }
+    
+    // Pattern 5: Direct HTML patterns for the actual rendered page (not markdown)
+    const htmlProductCards = html.matchAll(/<a[^>]*href="[^"]*\/product\/[^"]*"[^>]*title="([^"]+)"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["']/gi);
+    for (const match of htmlProductCards) {
+      const productName = match[1];
+      const imageUrl = match[2];
+      if (productName && imageUrl && /handle|pull|knob|grip|lever|flush|profile/i.test(productName)) {
+        console.log(`Hafele HTML pattern found: ${productName}`);
+        addProduct(productName, imageUrl);
+      }
+    }
+    
+    // Pattern 6: Another HTML variant with image first then title
+    const htmlProductCards2 = html.matchAll(/<img[^>]+(?:data-src|src)=["']([^"']+category_view[^"']+)["'][^>]*>[\s\S]*?<h3[^>]*>\s*<a[^>]*>([^<]+)</gi);
+    for (const match of htmlProductCards2) {
+      const imageUrl = match[1];
+      const productName = match[2].trim();
+      if (imageUrl && productName && /handle|pull|knob|grip|lever|flush|profile/i.test(productName)) {
+        console.log(`Hafele HTML h3 pattern found: ${productName}`);
+        addProduct(productName, imageUrl);
+      }
+    }
+    
+    console.log(`Hafele: Extracted ${products.length} furniture handle products`);
   }
   
   // Polytec/Laminex/Nikpol pattern - colour swatches
