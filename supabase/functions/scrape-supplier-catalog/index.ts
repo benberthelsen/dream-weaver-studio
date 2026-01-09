@@ -2408,8 +2408,35 @@ async function runScrapingTask(
     const extractionPrompt = SUPPLIER_PROMPTS[supplierSlug] || 
       `Extract all product colours, finishes, or stone colours from this ${supplier.name} catalogue page. Look for colour swatches, product tiles, colour cards, or sample images. Each product should have a name (the colour/finish name) and the image URL.`;
 
-    // Step 3: Scrape each product page
-    const allProducts: ScrapedProduct[] = [];
+    // Category mapping for incremental inserts
+    const CATEGORY_IDS = {
+      stoneBenchtops: '33f04a97-fba7-4a67-9ea7-84da822334ae',
+      handles: 'cd6ca340-a52e-409f-80e9-e969ba285944',
+      laminates: 'cf281fc3-3de5-4579-84e0-0913baad7cef',
+      edgeProfiles: 'a1795291-c26e-4244-9111-b7b3b40c71d9',
+    };
+    
+    const getCategoryId = (slug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
+      if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(slug)) {
+        return CATEGORY_IDS.stoneBenchtops;
+      }
+      if (slug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
+        return CATEGORY_IDS.handles;
+      }
+      if (['engineered_stone', 'quartz', 'ultra_compact', 'solid_surface'].includes(productType) || usageTypes.includes('bench_tops')) {
+        return CATEGORY_IDS.stoneBenchtops;
+      }
+      if (usageTypes.includes('kicks') || usageTypes.includes('splashbacks')) {
+        return CATEGORY_IDS.edgeProfiles;
+      }
+      return CATEGORY_IDS.laminates;
+    };
+
+    // Step 3: Scrape each product page and INSERT IMMEDIATELY
+    const seenNames = new Set<string>();
+    const seenImages = new Set<string>();
+    let totalInserted = 0;
+    let totalProductsFound = 0;
     const scrapedUrls: string[] = [];
     const failedUrls: string[] = [];
     
@@ -2421,7 +2448,8 @@ async function runScrapingTask(
         current_url: pageUrl,
         pages_scraped: scrapedUrls.length,
         pages_failed: failedUrls.length,
-        products_found: allProducts.length,
+        products_found: totalProductsFound,
+        products_inserted: totalInserted,
       });
       
       try {
@@ -2530,10 +2558,69 @@ async function runScrapingTask(
           }
         }
         
+        // INSERT PRODUCTS IMMEDIATELY after each page scrape
         if (extractedProducts.length > 0) {
-          console.log(`[BG]   Final: ${extractedProducts.length} products from ${pageUrl}`);
-          allProducts.push(...extractedProducts);
+          console.log(`[BG]   Inserting ${extractedProducts.length} products from ${pageUrl}...`);
+          let pageInserted = 0;
+          
+          for (const product of extractedProducts) {
+            // Validate and dedupe
+            if (!isValidProductName(product.name)) continue;
+            if (!isValidProductForSupplier(product, supplierSlug, config)) continue;
+            
+            const nameKey = product.name.toLowerCase().trim();
+            if (seenNames.has(nameKey)) continue;
+            
+            const imageKey = product.image_url.split('?')[0].toLowerCase();
+            if (seenImages.has(imageKey)) continue;
+            
+            seenNames.add(nameKey);
+            seenImages.add(imageKey);
+            
+            // Insert immediately
+            const classification = detectProductClassification(product.source_url, product.name, supplier);
+            const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
+            const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
+            
+            const { error } = await supabase
+              .from('catalog_items')
+              .upsert({
+                supplier_id: supplierId,
+                category_id: categoryId,
+                name: product.name,
+                image_url: product.image_url,
+                brand: brand,
+                color: product.color,
+                material: product.material,
+                finish_type: product.finish_type,
+                hex_color: product.hex_color,
+                source_url: product.source_url,
+                sku: product.sku,
+                product_type: classification.product_type,
+                thickness: classification.thickness,
+                usage_types: classification.usage_types,
+                is_active: true,
+                last_synced_at: new Date().toISOString(),
+              }, {
+                onConflict: 'supplier_id,name',
+                ignoreDuplicates: false,
+              });
+            
+            if (!error) {
+              pageInserted++;
+              totalInserted++;
+            }
+          }
+          
+          totalProductsFound += extractedProducts.length;
+          console.log(`[BG]   Inserted ${pageInserted} new products (total: ${totalInserted})`);
           scrapedUrls.push(pageUrl);
+          
+          // Update job progress after each page
+          await updateJob({
+            products_found: totalProductsFound,
+            products_inserted: totalInserted,
+          });
         } else {
           console.log(`[BG]   No products found on ${pageUrl}`);
           failedUrls.push(pageUrl);
@@ -2544,127 +2631,20 @@ async function runScrapingTask(
       }
     }
 
-    await updateJob({
-      status: 'inserting',
-      pages_scraped: scrapedUrls.length,
-      pages_failed: failedUrls.length,
-      products_found: allProducts.length,
-      current_url: null,
-    });
-
-    // Step 4: Deduplicate and validate products
-    const seenNames = new Set<string>();
-    const seenImages = new Set<string>();
-    const uniqueProducts = allProducts.filter(p => {
-      if (!isValidProductName(p.name)) {
-        return false;
-      }
-      if (!isValidProductForSupplier(p, supplierSlug, config)) {
-        return false;
-      }
-      
-      const nameKey = p.name.toLowerCase().trim();
-      if (seenNames.has(nameKey)) {
-        return false;
-      }
-      
-      const imageKey = p.image_url.split('?')[0].toLowerCase();
-      if (seenImages.has(imageKey)) {
-        return false;
-      }
-      
-      seenNames.add(nameKey);
-      seenImages.add(imageKey);
-      return true;
-    });
-    
-    console.log(`[BG] Unique products after dedup: ${uniqueProducts.length}`);
-
-    // Step 5: Upsert products
-    const insertedProducts: any[] = [];
-    const insertLimit = options?.insertLimit || 500;
-    
-    const CATEGORY_IDS = {
-      stoneBenchtops: '33f04a97-fba7-4a67-9ea7-84da822334ae',
-      handles: 'cd6ca340-a52e-409f-80e9-e969ba285944',
-      laminates: 'cf281fc3-3de5-4579-84e0-0913baad7cef',
-      edgeProfiles: 'a1795291-c26e-4244-9111-b7b3b40c71d9',
-    };
-    
-    const getCategoryId = (slug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
-      if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(slug)) {
-        return CATEGORY_IDS.stoneBenchtops;
-      }
-      if (slug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
-        return CATEGORY_IDS.handles;
-      }
-      if (['engineered_stone', 'quartz', 'ultra_compact', 'solid_surface'].includes(productType) || usageTypes.includes('bench_tops')) {
-        return CATEGORY_IDS.stoneBenchtops;
-      }
-      if (usageTypes.includes('kicks') || usageTypes.includes('splashbacks')) {
-        return CATEGORY_IDS.edgeProfiles;
-      }
-      return CATEGORY_IDS.laminates;
-    };
-    
-    for (const product of uniqueProducts.slice(0, insertLimit)) {
-      try {
-        const classification = detectProductClassification(product.source_url, product.name, supplier);
-        const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
-        const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
-        
-        const { data, error } = await supabase
-          .from('catalog_items')
-          .upsert({
-            supplier_id: supplierId,
-            category_id: categoryId,
-            name: product.name,
-            image_url: product.image_url,
-            brand: brand,
-            color: product.color,
-            material: product.material,
-            finish_type: product.finish_type,
-            hex_color: product.hex_color,
-            source_url: product.source_url,
-            sku: product.sku,
-            product_type: classification.product_type,
-            thickness: classification.thickness,
-            usage_types: classification.usage_types,
-            is_active: true,
-            last_synced_at: new Date().toISOString(),
-          }, {
-            onConflict: 'supplier_id,name',
-            ignoreDuplicates: false,
-          })
-          .select()
-          .single();
-
-        if (!error && data) {
-          insertedProducts.push(data);
-          
-          if (insertedProducts.length % 10 === 0) {
-            await updateJob({ products_inserted: insertedProducts.length });
-          }
-        }
-      } catch (err) {
-        console.error(`[BG] Failed to insert ${product.name}:`, err);
-      }
-    }
-
-    console.log(`[BG] Inserted ${insertedProducts.length} products into catalog`);
-
     // Mark job as complete
+    console.log(`[BG] Scraping complete. Total: ${totalInserted} products inserted from ${scrapedUrls.length} pages`);
+    
     await updateJob({
       status: 'completed',
       completed_at: new Date().toISOString(),
       pages_scraped: scrapedUrls.length,
       pages_failed: failedUrls.length,
-      products_found: uniqueProducts.length,
-      products_inserted: insertedProducts.length,
+      products_found: totalProductsFound,
+      products_inserted: totalInserted,
       current_url: null,
     });
 
-    console.log(`[BG] Job ${jobId} completed successfully: ${insertedProducts.length} products inserted`);
+    console.log(`[BG] Job ${jobId} completed successfully: ${totalInserted} products inserted`);
 
   } catch (error) {
     console.error('[BG] Error in background scraping task:', error);
