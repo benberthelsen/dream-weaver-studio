@@ -1642,10 +1642,22 @@ async function handleWorkMode(
       for (const product of extractedProducts) {
         if (!isValidProductName(product.name)) continue;
         
-        // Hafele filter
+        // Hafele filter - loosened to accept plurals/variants + category URL hints
         if (supplier.slug === 'hafele') {
           const nameLower = product.name.toLowerCase();
-          if (!nameLower.includes('handle') && !nameLower.includes('pull') && !nameLower.includes('knob')) {
+          const urlLower = (product.source_url || '').toLowerCase();
+          
+          // Accept if name contains handle/pull/knob variants (including plurals)
+          const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
+          
+          // Accept if URL indicates it's from handles category
+          const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
+                                       urlLower.includes('door-handles') ||
+                                       urlLower.includes('handles-knobs') ||
+                                       urlLower.includes('/11/') ||  // Category 11 = Furniture Handles
+                                       urlLower.includes('/13/');   // Category 13 = Door Handles
+          
+          if (!nameIsHandle && !urlIsHandleCategory) {
             continue;
           }
         }
@@ -2374,11 +2386,22 @@ Deno.serve(async (req) => {
         return false;
       }
       
-      // Supplier-specific product filtering
+      // Supplier-specific product filtering - loosened for Hafele
       if (supplier.slug === 'hafele') {
         const nameLower = p.name.toLowerCase();
-        const isHandle = nameLower.includes('handle') || nameLower.includes('pull') || nameLower.includes('knob');
-        if (!isHandle) {
+        const urlLower = (p.source_url || '').toLowerCase();
+        
+        // Accept if name contains handle/pull/knob variants (including plurals)
+        const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
+        
+        // Accept if URL indicates it's from handles category
+        const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
+                                     urlLower.includes('door-handles') ||
+                                     urlLower.includes('handles-knobs') ||
+                                     urlLower.includes('/11/') ||  // Category 11 = Furniture Handles
+                                     urlLower.includes('/13/');   // Category 13 = Door Handles
+        
+        if (!nameIsHandle && !urlIsHandleCategory) {
           console.log(`  Filtered out non-handle Hafele product: "${p.name}"`);
           return false;
         }
