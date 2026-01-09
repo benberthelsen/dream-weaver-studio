@@ -140,9 +140,12 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     useCrawlFallback: true,
     productUrlPatterns: [
       /\/products\/furniture-door-handles\//,
-      /\/P-\d+/,  // Individual product pages like P-00875707
+      /\/product\/.*\/P-\d+/,  // Individual product pages like /product/name/P-00875707
+      /\/P-\d+/,  // Product ID pattern
       /SearchParameter.*handles/i,  // Filtered category URLs
       /handles_knobs_product_type/i,  // Filter parameter for handles
+      /furniture-handles-knobs\/11/,  // Furniture handles category
+      /door-handles\/13/,  // Door handles category
     ],
     excludeUrlPatterns: [
       /\/cart/i,
@@ -157,6 +160,7 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/service/i,
       /\/showroom/i,
       /\/information\//i,
+      /\/compare\//i,
       // Exclude non-handle product categories
       /\/products\/furniture-fittings\//i,
       /\/products\/cabinet-hardware\//i,
@@ -168,18 +172,26 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/products\/bathroom/i,
       /\/products\/architectural/i,
     ],
-    imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload'],
+    imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload', '.product-listing-tile img'],
     skipAuFilter: true,
-    // Use filtered category URLs that show specific handle types
+    // Paginated seed URLs with 48 items per page (max) - covers all ~367 handles
+    // Furniture Handles & Knobs (category 11) - main handle section
     seedUrls: [
-      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DBar%2BPulls',
-      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DKnobs',
-      '/en/products/furniture-door-handles/10/?SearchParameter=%26checkbox_fs_facet_handles_knobs_product_type%3DWire%2BPulls',
-      '/en/products/furniture-door-handles/10/',
+      // Furniture Handles - page 1-8 (approx 300+ products)
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=1',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=2',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=3',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=4',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=5',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=6',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=7',
+      '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=8',
+      // Door Handles (category 13) - smaller section
+      '/en/products/furniture-door-handles/door-handles/13/?PageSize=48&PageNumber=1',
     ],
     // Firecrawl scrape options for JS-heavy/cookie-gated sites
     scrapeOptions: {
-      waitFor: 2000,
+      waitFor: 3000,  // Increased wait time for JS rendering
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
