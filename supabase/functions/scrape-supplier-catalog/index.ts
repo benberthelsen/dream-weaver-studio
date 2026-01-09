@@ -1919,22 +1919,13 @@ Deno.serve(async (req) => {
     }
 
     // Hafele special: mapping often returns only the start URL due to cookie/session gating.
-    // Use configured seed URLs to discover product detail links via link-scrape.
+    // Queue the seed pages directly (they contain product listings) rather than trying to
+    // discover product links upfront which causes timeouts.
     if (supplierSlug === 'hafele' && config.seedUrls && config.seedUrls.length > 0) {
       const seedAbsoluteUrls = config.seedUrls.map(p => (p.startsWith('http') ? p : baseUrl + p));
-      const discovered: string[] = [];
-
-      for (const seedUrl of seedAbsoluteUrls) {
-        const links = await linkScrapeFallback(seedUrl, firecrawlKey, baseUrl);
-        discovered.push(seedUrl, ...links);
-      }
-
-      const merged = [...new Set([...allUrls, ...discovered])];
-      if (merged.length > allUrls.length) {
-        allUrls = merged;
-        console.log(`Hafele seed discovery added URLs; now have ${allUrls.length} total URLs`);
-        await updateJob({ urls_mapped: allUrls.length });
-      }
+      allUrls = [...new Set([...allUrls, ...seedAbsoluteUrls])];
+      console.log(`Hafele: Added ${seedAbsoluteUrls.length} seed pages; now have ${allUrls.length} total URLs`);
+      await updateJob({ urls_mapped: allUrls.length });
     }
 
     // If we mapped from root domain for a sub-brand, filter to relevant URLs
