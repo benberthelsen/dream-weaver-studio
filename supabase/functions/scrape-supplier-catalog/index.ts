@@ -2192,121 +2192,33 @@ async function handleWorkMode(
   );
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+// ============================================================================
+// BACKGROUND SCRAPING TASK - Runs the actual scraping after returning jobId
+// ============================================================================
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+async function runScrapingTask(
+  supabase: any,
+  jobId: string,
+  supplierId: string,
+  url: string,
+  supplier: any,
+  supplierSlug: string,
+  config: SupplierConfig,
+  firecrawlKey: string,
+  options: any,
+  deletedCount: number
+): Promise<void> {
+  const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
   
-  let jobId: string | null = null;
+  // Helper to update job progress
+  const updateJob = async (updates: Record<string, any>) => {
+    await supabase
+      .from('scrape_jobs')
+      .update(updates)
+      .eq('id', jobId);
+  };
 
   try {
-    const { supplierId, url, options } = await req.json();
-    const isDryRun = options?.dryRun === true;
-    const mode = options?.mode || 'full';  // 'full', 'plan', or 'work'
-    const existingJobId = options?.jobId;  // For 'work' mode
-    const batchSize = options?.batchSize || 10;  // URLs to process per batch
-    const skipCleanup = options?.skipCleanup === true;  // Skip deleting old products
-
-    if (!supplierId) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Supplier ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // For 'work' mode, jobId is required
-    if (mode === 'work' && !existingJobId) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Job ID is required for work mode' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // URL is required for full and plan modes
-    if ((mode === 'full' || mode === 'plan') && !url) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'URL is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    console.log(`Starting ${isDryRun ? 'DRY RUN' : mode.toUpperCase()} scrape for supplierId=${supplierId}`);
-
-    const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!firecrawlKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Firecrawl not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get supplier info
-    const { data: supplier, error: supplierError } = await supabase
-      .from('suppliers')
-      .select('*')
-      .eq('id', supplierId)
-      .single();
-
-    if (supplierError || !supplier) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Supplier not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const supplierSlug = supplier.slug?.toLowerCase() || '';
-    const config = SUPPLIER_CONFIGS[supplierSlug] || {};
-
-    // =========================================================================
-    // WORK MODE: Process next batch of URLs from existing job
-    // =========================================================================
-    if (mode === 'work') {
-      return await handleWorkMode(supabase, existingJobId, batchSize, supplier, supplierSlug, config, firecrawlKey);
-    }
-
-    // =========================================================================
-    // CLEANUP OLD PRODUCTS (unless skipCleanup is true or dry run)
-    // =========================================================================
-    let deletedCount = 0;
-    if (!isDryRun && !skipCleanup && (mode === 'full' || mode === 'plan')) {
-      deletedCount = await cleanupOldProducts(supabase, supplierId, supplier.name);
-    }
-
-    // For dry run, skip creating a job
-    let jobId: string | null = null;
-    if (!isDryRun) {
-      // Create scrape job for progress tracking
-      const { data: job, error: jobError } = await supabase
-        .from('scrape_jobs')
-        .insert({
-          supplier_id: supplierId,
-          status: mode === 'plan' ? 'planning' : 'mapping',
-          mode: mode,
-          started_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (jobError) {
-        console.error('Failed to create job:', jobError);
-      } else {
-        jobId = job.id;
-      }
-    }
-
-    // Helper to update job progress
-    const updateJob = async (updates: Record<string, any>) => {
-      if (!jobId) return;
-      await supabase
-        .from('scrape_jobs')
-        .update(updates)
-        .eq('id', jobId);
-    };
-
     // Parse base URL
     let baseUrl: string;
     try {
@@ -2323,15 +2235,13 @@ Deno.serve(async (req) => {
       console.log(`Using root domain for mapping: ${urlToMap}`);
     }
 
-    // Check if base URL is Australian
-    const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
-    console.log(`Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite}, slug: ${supplierSlug})`);
+    console.log(`[BG] Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite}, slug: ${supplierSlug})`);
     if (deletedCount > 0) {
-      console.log(`Cleaned up ${deletedCount} old products before scraping`);
+      console.log(`[BG] Cleaned up ${deletedCount} old products before scraping`);
     }
 
     // Step 1: Map the entire website
-    console.log('Step 1: Mapping website...');
+    console.log('[BG] Step 1: Mapping website...');
     await updateJob({ status: 'mapping', current_url: urlToMap });
     
     let allUrls: string[] = [];
@@ -2354,10 +2264,10 @@ Deno.serve(async (req) => {
       
       if (mapResponse.ok && mapData.links && mapData.links.length > 0) {
         allUrls = mapData.links;
-        console.log(`Found ${allUrls.length} total URLs on website`);
+        console.log(`[BG] Found ${allUrls.length} total URLs on website`);
         await updateJob({ urls_mapped: allUrls.length });
       } else {
-        console.error('Map failed or returned no URLs:', mapData);
+        console.error('[BG] Map failed or returned no URLs:', mapData);
         
         // Try crawl fallback if configured or if map returned nothing
         if (config.useCrawlFallback || allUrls.length === 0) {
@@ -2371,7 +2281,7 @@ Deno.serve(async (req) => {
         await updateJob({ urls_mapped: allUrls.length });
       }
     } catch (error) {
-      console.error('Map request failed:', error);
+      console.error('[BG] Map request failed:', error);
       
       // Try crawl fallback
       if (config.useCrawlFallback) {
@@ -2386,12 +2296,10 @@ Deno.serve(async (req) => {
     }
 
     // Hafele special: mapping often returns only the start URL due to cookie/session gating.
-    // Queue the seed pages directly (they contain product listings) rather than trying to
-    // discover product links upfront which causes timeouts.
     if (supplierSlug === 'hafele' && config.seedUrls && config.seedUrls.length > 0) {
       const seedAbsoluteUrls = config.seedUrls.map(p => (p.startsWith('http') ? p : baseUrl + p));
       allUrls = [...new Set([...allUrls, ...seedAbsoluteUrls])];
-      console.log(`Hafele: Added ${seedAbsoluteUrls.length} seed pages; now have ${allUrls.length} total URLs`);
+      console.log(`[BG] Hafele: Added ${seedAbsoluteUrls.length} seed pages; now have ${allUrls.length} total URLs`);
       await updateJob({ urls_mapped: allUrls.length });
     }
 
@@ -2402,58 +2310,50 @@ Deno.serve(async (req) => {
       allUrls = allUrls.filter(u => {
         try {
           const parsed = new URL(u);
-          // Apply sub-brand exclude patterns first
           if (config.subBrandExcludePatterns?.some(p => p.test(u))) {
             return false;
           }
-          // Also apply regular exclude patterns
           if (config.excludeUrlPatterns?.some(p => p.test(u))) {
             return false;
           }
-          
-          // For sub-brands that require brand name in URL (e.g., essastone)
-          // Only include URLs that explicitly contain the supplier slug
           if (config.requireBrandInUrl) {
             const urlLower = u.toLowerCase();
             if (!urlLower.includes(supplierSlug) && !urlLower.includes('brand=' + supplierSlug)) {
               return false;
             }
           }
-          
           return parsed.pathname.startsWith(pathPrefix) || 
                  config.productUrlPatterns?.some(p => p.test(u));
         } catch {
           return false;
         }
       });
-      console.log(`Filtered to ${allUrls.length} URLs matching sub-brand path: ${pathPrefix}`);
+      console.log(`[BG] Filtered to ${allUrls.length} URLs matching sub-brand path: ${pathPrefix}`);
     }
 
     // Step 2: Filter to product URLs
-    console.log('Step 2: Filtering to product URLs...');
+    console.log('[BG] Step 2: Filtering to product URLs...');
     let productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, !isAustraliaSite);
-    console.log(`Found ${productUrls.length} potential product URLs`);
+    console.log(`[BG] Found ${productUrls.length} potential product URLs`);
     
     // For sub-brands, apply stricter filtering
     if (config.requireBrandInUrl) {
-      console.log(`Sub-brand detected (${supplierSlug}), prioritizing original URL: ${url}`);
-      // Filter productUrls to only those containing the brand name
+      console.log(`[BG] Sub-brand detected (${supplierSlug}), prioritizing original URL: ${url}`);
       productUrls = productUrls.filter(u => {
         const urlLower = u.toLowerCase();
         return urlLower.includes(supplierSlug) || urlLower.includes('brand=' + supplierSlug);
       });
-      console.log(`After brand filter: ${productUrls.length} URLs contain brand name`);
+      console.log(`[BG] After brand filter: ${productUrls.length} URLs contain brand name`);
       
-      // Always include the original URL at the beginning
       if (!productUrls.includes(url)) {
         productUrls.unshift(url);
       }
     }
     
-    // Fallback: Use seedUrls if configured and product URL discovery looks too small
+    // Fallback: Use seedUrls if configured
     const seedMinCount = supplierSlug === 'hafele' ? 5 : 0;
     if ((productUrls.length === 0 || (seedMinCount > 0 && productUrls.length < seedMinCount)) && config.seedUrls && config.seedUrls.length > 0) {
-      console.log(`Using seedUrls fallback: ${config.seedUrls.join(', ')}`);
+      console.log(`[BG] Using seedUrls fallback: ${config.seedUrls.join(', ')}`);
       for (const seedPath of config.seedUrls) {
         const seedUrl = seedPath.startsWith('http') ? seedPath : baseUrl + seedPath;
         if (!productUrls.includes(seedUrl)) {
@@ -2464,191 +2364,23 @@ Deno.serve(async (req) => {
     
     // Ultimate fallback: scrape the original URL directly
     if (productUrls.length === 0) {
-      console.log('No product URLs found, falling back to original URL');
+      console.log('[BG] No product URLs found, falling back to original URL');
       productUrls = [url];
     }
 
-    // Hafele: prefer scraping product detail pages (P-xxxx) rather than category listings
+    // Hafele: prefer scraping product detail pages
     if (supplierSlug === 'hafele') {
       const detailUrls = productUrls.filter(u => /\/product\//i.test(u) && /\/P-\d+/i.test(u));
       if (detailUrls.length > 0) {
         productUrls = [...new Set(detailUrls)];
-        console.log(`Hafele: narrowed to ${productUrls.length} product detail URLs`);
+        console.log(`[BG] Hafele: narrowed to ${productUrls.length} product detail URLs`);
       }
     }
 
     const defaultMaxPages = supplierSlug === 'hafele' ? 500 : 50;
-    const maxPages = isDryRun ? Math.min(options?.maxPages || 3, 3) : (options?.maxPages || defaultMaxPages);
+    const maxPages = options?.maxPages || defaultMaxPages;
     const urlsToScrape = productUrls.slice(0, maxPages);
     
-    // DRY RUN: Return diagnostics without inserting data
-    if (isDryRun) {
-      console.log('DRY RUN: Sampling first 3 URLs for extraction test...');
-      
-      // Sample extraction from first 1-3 URLs
-      const sampleProducts: ScrapedProduct[] = [];
-      const sampleScrapedUrls: string[] = [];
-      const sampleFailedUrls: string[] = [];
-      const sampleWarnings: string[] = [];
-      
-      for (let i = 0; i < Math.min(urlsToScrape.length, 3); i++) {
-        const pageUrl = urlsToScrape[i];
-        console.log(`DRY RUN: Sampling (${i + 1}): ${pageUrl}`);
-        
-        try {
-          const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${firecrawlKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url: pageUrl,
-              formats: ['html', 'markdown'],
-              onlyMainContent: false,
-              waitFor: config.scrapeOptions?.waitFor,
-              headers: config.scrapeOptions?.headers,
-            }),
-          }, 2, 3000);
-
-          const htmlData = await htmlResponse.json();
-          
-          if (htmlResponse.ok && htmlData.data) {
-            const html = htmlData.data.html || '';
-            const markdown = htmlData.data.markdown || '';
-            const metadata = htmlData.data.metadata || {};
-            
-            // Check for cookie/session gate warnings
-            if (html.includes('cookies disabled') || html.includes('logged off for security')) {
-              sampleWarnings.push(`⚠️ Cookie/session gate detected on ${pageUrl}`);
-            }
-            if (metadata.statusCode && metadata.statusCode !== 200) {
-              sampleWarnings.push(`⚠️ HTTP ${metadata.statusCode} on ${pageUrl}`);
-            }
-            
-            // Check if this is an error page
-            const errorCheck = isErrorPage(html);
-            if (errorCheck.isError) {
-              sampleWarnings.push(`⚠️ Error page detected on ${pageUrl}: ${errorCheck.reason}`);
-              sampleFailedUrls.push(pageUrl);
-              continue;
-            }
-            
-            // Extract products for sample
-            const htmlProducts = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
-            if (htmlProducts.length > 0) {
-              sampleProducts.push(...htmlProducts.slice(0, 10));
-              sampleScrapedUrls.push(pageUrl);
-            } else {
-              sampleWarnings.push(`⚠️ No products extracted from ${pageUrl}`);
-              sampleFailedUrls.push(pageUrl);
-            }
-          } else {
-            sampleWarnings.push(`⚠️ Failed to fetch ${pageUrl}: ${htmlData.error || 'unknown error'}`);
-            sampleFailedUrls.push(pageUrl);
-          }
-        } catch (error) {
-          sampleWarnings.push(`⚠️ Error sampling ${pageUrl}: ${error instanceof Error ? error.message : 'unknown'}`);
-          sampleFailedUrls.push(pageUrl);
-        }
-      }
-      
-      // Build rejection stats
-      const rejectionStats = {
-        totalDiscovered: allUrls.length,
-        productUrlsKept: productUrls.length,
-        rejected: allUrls.length - productUrls.length,
-      };
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          dryRun: true,
-          supplier: supplier.name,
-          supplierSlug,
-          hasConfig: !!SUPPLIER_CONFIGS[supplierSlug],
-          configDetails: config ? {
-            hasSeedUrls: !!(config.seedUrls && config.seedUrls.length > 0),
-            hasExcludePatterns: !!(config.excludeUrlPatterns && config.excludeUrlPatterns.length > 0),
-            skipAuFilter: config.skipAuFilter,
-            useCrawlFallback: config.useCrawlFallback,
-          } : null,
-          urlDiscovery: {
-            totalDiscovered: allUrls.length,
-            productUrlsKept: productUrls.length,
-            rejectedCount: allUrls.length - productUrls.length,
-            discoveredUrlsSample: allUrls.slice(0, 30),
-            productUrlsSample: productUrls.slice(0, 30),
-          },
-          extraction: {
-            urlsSampled: sampleScrapedUrls.length + sampleFailedUrls.length,
-            successfulPages: sampleScrapedUrls.length,
-            failedPages: sampleFailedUrls.length,
-            productsFound: sampleProducts.length,
-            productsSample: sampleProducts.slice(0, 20).map(p => ({
-              name: p.name,
-              image_url: p.image_url,
-              source_url: p.source_url,
-            })),
-          },
-          warnings: sampleWarnings,
-          recommendation: sampleProducts.length > 0 
-            ? `✅ Ready to import. Found ${sampleProducts.length} sample products from ${sampleScrapedUrls.length} pages.`
-            : sampleWarnings.length > 0
-            ? `⚠️ Issues detected. Review warnings above before importing.`
-            : `❌ No products found. Check URL patterns or seed URLs.`,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // =========================================================================
-    // PLAN MODE: Queue URLs for batch processing, don't scrape yet
-    // =========================================================================
-    if (mode === 'plan') {
-      console.log(`PLAN MODE: Queueing ${urlsToScrape.length} URLs for batch processing`);
-      
-      // Insert URLs into scrape_job_urls queue
-      const urlInserts = urlsToScrape.map(url => ({
-        job_id: jobId,
-        url: url,
-        status: 'pending',
-      }));
-      
-      if (urlInserts.length > 0 && jobId) {
-        const { error: urlsError } = await supabase
-          .from('scrape_job_urls')
-          .insert(urlInserts);
-        
-        if (urlsError) {
-          console.error('Failed to queue URLs:', urlsError);
-        }
-      }
-      
-      // Update job with queued count and set status to 'planned'
-      await updateJob({ 
-        status: 'planned',
-        urls_queued: urlsToScrape.length,
-        urls_to_scrape: urlsToScrape.length,
-        urls_mapped: allUrls.length,
-        urls_completed: 0,
-      });
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          mode: 'plan',
-          jobId: jobId,
-          urlsQueued: urlsToScrape.length,
-          urlsMapped: allUrls.length,
-          oldProductsDeleted: deletedCount,
-          message: `Queued ${urlsToScrape.length} URLs for batch processing. Call with mode='work' to start.`,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // FULL MODE continues below...
     await updateJob({ 
       status: 'scraping', 
       urls_to_scrape: urlsToScrape.length,
@@ -2676,14 +2408,14 @@ Deno.serve(async (req) => {
     const extractionPrompt = SUPPLIER_PROMPTS[supplierSlug] || 
       `Extract all product colours, finishes, or stone colours from this ${supplier.name} catalogue page. Look for colour swatches, product tiles, colour cards, or sample images. Each product should have a name (the colour/finish name) and the image URL.`;
 
-    // Step 3: Scrape each product page using JSON extraction (with HTML fallback)
+    // Step 3: Scrape each product page
     const allProducts: ScrapedProduct[] = [];
     const scrapedUrls: string[] = [];
     const failedUrls: string[] = [];
     
     for (let i = 0; i < urlsToScrape.length; i++) {
       const pageUrl = urlsToScrape[i];
-      console.log(`Scraping (${i + 1}/${urlsToScrape.length}): ${pageUrl}`);
+      console.log(`[BG] Scraping (${i + 1}/${urlsToScrape.length}): ${pageUrl}`);
       
       await updateJob({
         current_url: pageUrl,
@@ -2695,8 +2427,8 @@ Deno.serve(async (req) => {
       try {
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Try JSON extraction first (more reliable with LLM understanding)
-        console.log(`  Attempting JSON extraction...`);
+        // Try JSON extraction first
+        console.log(`[BG]   Attempting JSON extraction...`);
         const jsonResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
           headers: {
@@ -2737,17 +2469,14 @@ Deno.serve(async (req) => {
         
         if (jsonResponse.ok && jsonData.data?.json?.products) {
           const jsonProducts = jsonData.data.json.products;
-          console.log(`  JSON extraction found ${jsonProducts.length} products`);
+          console.log(`[BG]   JSON extraction found ${jsonProducts.length} products`);
           
           for (const p of jsonProducts) {
             if (p.name && p.image_url) {
-              // Resolve relative URLs
               let imageUrl = p.image_url;
               if (!imageUrl.startsWith('http')) {
                 imageUrl = baseUrl + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
               }
-              
-              // Optimize image URL
               imageUrl = optimizeImageUrl(imageUrl, supplierSlug);
               
               extractedProducts.push({
@@ -2760,12 +2489,12 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          console.log(`  JSON extraction failed or returned no products:`, jsonData.error || 'empty response');
+          console.log(`[BG]   JSON extraction failed or returned no products:`, jsonData.error || 'empty response');
         }
         
         // If JSON extraction returned few/no products, try HTML fallback
         if (extractedProducts.length < 3) {
-          console.log(`  JSON found ${extractedProducts.length}, trying HTML fallback...`);
+          console.log(`[BG]   JSON found ${extractedProducts.length}, trying HTML fallback...`);
           
           const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
             method: 'POST',
@@ -2785,18 +2514,16 @@ Deno.serve(async (req) => {
           if (htmlResponse.ok && htmlData.data?.html) {
             const html = htmlData.data.html;
             
-            // Check if this is an error page
             const errorCheck = isErrorPage(html);
             if (errorCheck.isError) {
-              console.log(`  Skipping error page ${pageUrl}: ${errorCheck.reason}`);
+              console.log(`[BG]   Skipping error page ${pageUrl}: ${errorCheck.reason}`);
               failedUrls.push(pageUrl);
               continue;
             }
             
             const htmlProducts = extractProductsFromHtml(html, pageUrl, baseUrl, supplierSlug);
-            console.log(`  HTML fallback found ${htmlProducts.length} products`);
+            console.log(`[BG]   HTML fallback found ${htmlProducts.length} products`);
             
-            // Use HTML products if we got more than JSON
             if (htmlProducts.length > extractedProducts.length) {
               extractedProducts = htmlProducts;
             }
@@ -2804,15 +2531,15 @@ Deno.serve(async (req) => {
         }
         
         if (extractedProducts.length > 0) {
-          console.log(`  Final: ${extractedProducts.length} products from ${pageUrl}`);
+          console.log(`[BG]   Final: ${extractedProducts.length} products from ${pageUrl}`);
           allProducts.push(...extractedProducts);
           scrapedUrls.push(pageUrl);
         } else {
-          console.log(`  No products found on ${pageUrl}`);
+          console.log(`[BG]   No products found on ${pageUrl}`);
           failedUrls.push(pageUrl);
         }
       } catch (error) {
-        console.error(`  Error scraping ${pageUrl}:`, error);
+        console.error(`[BG]   Error scraping ${pageUrl}:`, error);
         failedUrls.push(pageUrl);
       }
     }
@@ -2825,33 +2552,24 @@ Deno.serve(async (req) => {
       current_url: null,
     });
 
-    // Step 4: Deduplicate and validate products by name AND image URL
+    // Step 4: Deduplicate and validate products
     const seenNames = new Set<string>();
     const seenImages = new Set<string>();
     const uniqueProducts = allProducts.filter(p => {
-      // Apply validation filter
       if (!isValidProductName(p.name)) {
-        console.log(`  Filtered out invalid product name: "${p.name}"`);
         return false;
       }
-      
-      // Apply supplier-specific product filtering
       if (!isValidProductForSupplier(p, supplierSlug, config)) {
-        console.log(`  Filtered out product: "${p.name}" (doesn't match supplier requirements)`);
         return false;
       }
       
-      // Deduplicate by name
       const nameKey = p.name.toLowerCase().trim();
       if (seenNames.has(nameKey)) {
-        console.log(`  Filtered out duplicate name: "${p.name}"`);
         return false;
       }
       
-      // Deduplicate by image URL (strip query params for comparison)
       const imageKey = p.image_url.split('?')[0].toLowerCase();
       if (seenImages.has(imageKey)) {
-        console.log(`  Filtered out duplicate image: "${p.name}" has same image as another product`);
         return false;
       }
       
@@ -2860,13 +2578,12 @@ Deno.serve(async (req) => {
       return true;
     });
     
-    console.log(`Unique products after dedup: ${uniqueProducts.length}`);
+    console.log(`[BG] Unique products after dedup: ${uniqueProducts.length}`);
 
-    // Step 5: Upsert products into catalog_items (prevents duplicates by name per supplier)
+    // Step 5: Upsert products
     const insertedProducts: any[] = [];
     const insertLimit = options?.insertLimit || 500;
     
-    // Category mapping based on supplier and product type
     const CATEGORY_IDS = {
       stoneBenchtops: '33f04a97-fba7-4a67-9ea7-84da822334ae',
       handles: 'cd6ca340-a52e-409f-80e9-e969ba285944',
@@ -2874,53 +2591,33 @@ Deno.serve(async (req) => {
       edgeProfiles: 'a1795291-c26e-4244-9111-b7b3b40c71d9',
     };
     
-    // Determine category based on supplier and product type
-    const getCategoryId = (supplierSlug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
-      // Stone suppliers
-      if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(supplierSlug)) {
+    const getCategoryId = (slug: string, supplierCategory: string | null, productType: string, usageTypes: string[]) => {
+      if (['caesarstone', 'essastone', 'dekton', 'silestone', 'smartstone', 'lithostone', 'quantum-quartz', 'wk-stone', 'ydl-stone', 'ydl', 'lavistone'].includes(slug)) {
         return CATEGORY_IDS.stoneBenchtops;
       }
-      // Hardware suppliers
-      if (supplierSlug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
+      if (slug === 'hafele' || supplierCategory === 'hardware' || productType === 'hardware') {
         return CATEGORY_IDS.handles;
       }
-      // Stone product types
       if (['engineered_stone', 'quartz', 'ultra_compact', 'solid_surface'].includes(productType) || usageTypes.includes('bench_tops')) {
         return CATEGORY_IDS.stoneBenchtops;
       }
-      // Edge/kick/splashback -> Edge Profiles
       if (usageTypes.includes('kicks') || usageTypes.includes('splashbacks')) {
         return CATEGORY_IDS.edgeProfiles;
       }
-      // Default to Laminates (boards, laminates, veneers, doors, panels)
       return CATEGORY_IDS.laminates;
     };
     
     for (const product of uniqueProducts.slice(0, insertLimit)) {
       try {
-        // Detect product classification
-        const classification = detectProductClassification(
-          product.source_url,
-          product.name,
-          supplier
-        );
-        
-        // Get appropriate category ID
-        const categoryId = getCategoryId(
-          supplierSlug, 
-          supplier.category, 
-          classification.product_type, 
-          classification.usage_types
-        );
-
-        // Extract brand
+        const classification = detectProductClassification(product.source_url, product.name, supplier);
+        const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
         const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
         
         const { data, error } = await supabase
           .from('catalog_items')
           .upsert({
             supplier_id: supplierId,
-            category_id: categoryId,  // Always set category_id
+            category_id: categoryId,
             name: product.name,
             image_url: product.image_url,
             brand: brand,
@@ -2945,17 +2642,16 @@ Deno.serve(async (req) => {
         if (!error && data) {
           insertedProducts.push(data);
           
-          // Update progress every 10 inserts
           if (insertedProducts.length % 10 === 0) {
             await updateJob({ products_inserted: insertedProducts.length });
           }
         }
       } catch (err) {
-        console.error(`Failed to insert ${product.name}:`, err);
+        console.error(`[BG] Failed to insert ${product.name}:`, err);
       }
     }
 
-    console.log(`Inserted ${insertedProducts.length} products into catalog`);
+    console.log(`[BG] Inserted ${insertedProducts.length} products into catalog`);
 
     // Mark job as complete
     await updateJob({
@@ -2968,26 +2664,260 @@ Deno.serve(async (req) => {
       current_url: null,
     });
 
+    console.log(`[BG] Job ${jobId} completed successfully: ${insertedProducts.length} products inserted`);
+
+  } catch (error) {
+    console.error('[BG] Error in background scraping task:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    await supabase
+      .from('scrape_jobs')
+      .update({
+        status: 'failed',
+        error_message: errorMessage,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+  }
+}
+
+// ============================================================================
+// MAIN REQUEST HANDLER
+// ============================================================================
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  try {
+    const { supplierId, url, options } = await req.json();
+    const isDryRun = options?.dryRun === true;
+    const mode = options?.mode || 'full';  // 'full', 'plan', or 'work'
+    const existingJobId = options?.jobId;  // For 'work' mode
+    const batchSize = options?.batchSize || 10;
+    const skipCleanup = options?.skipCleanup === true;
+
+    if (!supplierId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Supplier ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (mode === 'work' && !existingJobId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Job ID is required for work mode' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if ((mode === 'full' || mode === 'plan') && !url) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'URL is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`Starting ${isDryRun ? 'DRY RUN' : mode.toUpperCase()} scrape for supplierId=${supplierId}`);
+
+    const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!firecrawlKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Firecrawl not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get supplier info
+    const { data: supplier, error: supplierError } = await supabase
+      .from('suppliers')
+      .select('*')
+      .eq('id', supplierId)
+      .single();
+
+    if (supplierError || !supplier) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Supplier not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supplierSlug = supplier.slug?.toLowerCase() || '';
+    const config = SUPPLIER_CONFIGS[supplierSlug] || {};
+
+    // =========================================================================
+    // WORK MODE: Process next batch of URLs from existing job (synchronous)
+    // =========================================================================
+    if (mode === 'work') {
+      return await handleWorkMode(supabase, existingJobId, batchSize, supplier, supplierSlug, config, firecrawlKey);
+    }
+
+    // =========================================================================
+    // DRY RUN MODE: Return diagnostics without inserting data (synchronous)
+    // =========================================================================
+    if (isDryRun) {
+      // Parse base URL
+      let baseUrl: string;
+      try {
+        const urlObj = new URL(url);
+        baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+      } catch {
+        baseUrl = url;
+      }
+
+      let urlToMap = url;
+      if (config.mapFromRoot && config.rootDomain) {
+        urlToMap = config.rootDomain;
+      }
+
+      const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
+      
+      // Map website
+      let allUrls: string[] = [];
+      try {
+        const mapResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/map', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: urlToMap,
+            limit: options?.mapLimit || 3000,
+            includeSubdomains: false,
+          }),
+        });
+        const mapData = await mapResponse.json();
+        if (mapResponse.ok && mapData.links) {
+          allUrls = mapData.links;
+        }
+      } catch (error) {
+        console.error('Map failed:', error);
+        allUrls = [url];
+      }
+
+      const productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, !isAustraliaSite);
+      const urlsToScrape = productUrls.slice(0, 3);
+
+      // Sample extraction
+      const sampleProducts: ScrapedProduct[] = [];
+      const sampleWarnings: string[] = [];
+      
+      for (const pageUrl of urlsToScrape) {
+        try {
+          const htmlResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: pageUrl,
+              formats: ['html'],
+              onlyMainContent: false,
+            }),
+          }, 2, 3000);
+
+          const htmlData = await htmlResponse.json();
+          if (htmlResponse.ok && htmlData.data?.html) {
+            const htmlProducts = extractProductsFromHtml(htmlData.data.html, pageUrl, baseUrl, supplierSlug);
+            sampleProducts.push(...htmlProducts.slice(0, 10));
+          }
+        } catch (error) {
+          sampleWarnings.push(`Error sampling ${pageUrl}: ${error instanceof Error ? error.message : 'unknown'}`);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          dryRun: true,
+          supplier: supplier.name,
+          supplierSlug,
+          urlDiscovery: {
+            totalDiscovered: allUrls.length,
+            productUrlsKept: productUrls.length,
+          },
+          extraction: {
+            productsFound: sampleProducts.length,
+            productsSample: sampleProducts.slice(0, 20).map(p => ({
+              name: p.name,
+              image_url: p.image_url,
+              source_url: p.source_url,
+            })),
+          },
+          warnings: sampleWarnings,
+          recommendation: sampleProducts.length > 0 
+            ? `✅ Ready to import. Found ${sampleProducts.length} sample products.`
+            : `❌ No products found. Check URL patterns or seed URLs.`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =========================================================================
+    // FULL MODE: Create job, cleanup, then run scraping in background
+    // =========================================================================
+    
+    // Cleanup old products first (synchronous, before returning)
+    let deletedCount = 0;
+    if (!skipCleanup) {
+      deletedCount = await cleanupOldProducts(supabase, supplierId, supplier.name);
+    }
+
+    // Create scrape job for progress tracking
+    const { data: job, error: jobError } = await supabase
+      .from('scrape_jobs')
+      .insert({
+        supplier_id: supplierId,
+        status: 'starting',
+        mode: mode,
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      console.error('Failed to create job:', jobError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to create scrape job' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const jobId = job.id;
+    console.log(`Created job ${jobId} for ${supplier.name}, returning immediately and running scrape in background`);
+
+    // Run the actual scraping in background using EdgeRuntime.waitUntil
+    // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+    EdgeRuntime.waitUntil(
+      runScrapingTask(
+        supabase,
+        jobId,
+        supplierId,
+        url,
+        supplier,
+        supplierSlug,
+        config,
+        firecrawlKey,
+        options,
+        deletedCount
+      )
+    );
+
+    // Return immediately with the job ID - the UI will poll for updates via realtime subscription
     return new Response(
       JSON.stringify({
         success: true,
-        jobId,
+        jobId: jobId,
         supplier: supplier.name,
-        isAustralianSite: isAustraliaSite,
-        supplierConfig: config ? 'custom' : 'generic',
+        message: 'Scraping started in background. Monitor progress via job updates.',
         oldProductsDeleted: deletedCount,
-        stats: {
-          urlsMapped: allUrls.length,
-          productUrlsFound: productUrls.length,
-          pagesScraped: scrapedUrls.length,
-          pagesFailed: failedUrls.length,
-          productsExtracted: allProducts.length,
-          uniqueProducts: uniqueProducts.length,
-          productsInserted: insertedProducts.length,
-        },
-        scrapedUrls,
-        failedUrls,
-        sampleProducts: insertedProducts.slice(0, 10),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -2996,20 +2926,8 @@ Deno.serve(async (req) => {
     console.error('Error in catalog scrape:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Mark job as failed
-    if (jobId) {
-      await supabase
-        .from('scrape_jobs')
-        .update({
-          status: 'failed',
-          error_message: errorMessage,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', jobId);
-    }
-    
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage, jobId }),
+      JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
