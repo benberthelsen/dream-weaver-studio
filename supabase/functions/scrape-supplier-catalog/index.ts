@@ -47,17 +47,24 @@ interface SupplierConfig {
     headers?: Record<string, string>;
     actions?: Array<{ type: string; selector?: string; text?: string }>;
   };
+  // Product filtering - remove rubbish scrapes
+  requiredNamePatterns?: RegExp[];  // Product name must match at least one
+  excludeNamePatterns?: RegExp[];   // Filter out products matching these
 }
 
 const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   'polytec': {
     productUrlPatterns: [/\/colours\//, /\/decors?\//, /\/ravine\//, /\/melamine\//, /\/laminate\//],
     excludeUrlPatterns: [/\/stockists/, /\/contact/, /\/news/, /\/sustainability/, /\/moodboard/, /\/sample/],
+    requiredNamePatterns: [/ravine|melamine|createc|seratone|venette|woodmatt|prime|oak|walnut|grey|white|black|natural/i],
+    excludeNamePatterns: [/showroom|samples|brochure|download|pdf/i],
   },
   'laminex': {
     productUrlPatterns: [/\/products\/.*\/colours/, /\/decorative-surfaces/, /\/colours\//, /\/benchtops\//, /\/essastone\//, /\/minerals\//],
     excludeUrlPatterns: [/\/location\//, /\/find-a-retailer/, /\/contact/, /\/sustainability/, /\/inspirations\//, /\/sample/],
     mapFromRoot: false,
+    requiredNamePatterns: [/colour|decor|woodgrain|mineral|solid|white|grey|oak|walnut|charcoal/i],
+    excludeNamePatterns: [/sustainability|blog|news|location|brochure/i],
   },
   'essastone': {
     mapFromRoot: true,
@@ -77,7 +84,6 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/inspiration\//,
       /\/case-study\//,
       /\/sustainability\//,
-      // CRITICAL: Exclude generic Laminex browse pages that don't have brand filter
       /\/browse\/product-type$/,
       /\/browse\/colour-texture$/,  
       /\/browse\/product-application$/,
@@ -90,13 +96,11 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/news\//,
       /\/insights\//,
       /\/blog\//,
-      // For sub-brands, require "essastone" to appear somewhere in the URL
     ],
     skipAuFilter: true,
     seedUrls: [
       '/products/benchtops/essastone',
     ],
-    // Special flag: for sub-brand filtering, require brand name in URL
     requireBrandInUrl: true,
   },
   'forestone': {
@@ -140,12 +144,12 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     useCrawlFallback: true,
     productUrlPatterns: [
       /\/products\/furniture-door-handles\//,
-      /\/product\/.*\/P-\d+/,  // Individual product pages like /product/name/P-00875707
-      /\/P-\d+/,  // Product ID pattern
-      /SearchParameter.*handles/i,  // Filtered category URLs
-      /handles_knobs_product_type/i,  // Filter parameter for handles
-      /furniture-handles-knobs\/11/,  // Furniture handles category
-      /door-handles\/13/,  // Door handles category
+      /\/product\/.*\/P-\d+/,
+      /\/P-\d+/,
+      /SearchParameter.*handles/i,
+      /handles_knobs_product_type/i,
+      /furniture-handles-knobs\/11/,
+      /door-handles\/13/,
     ],
     excludeUrlPatterns: [
       /\/cart/i,
@@ -161,7 +165,6 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/showroom/i,
       /\/information\//i,
       /\/compare\//i,
-      // Exclude non-handle product categories
       /\/products\/furniture-fittings\//i,
       /\/products\/cabinet-hardware\//i,
       /\/products\/kitchen\//i,
@@ -174,10 +177,7 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     ],
     imageSelectors: ['img[data-src]', 'img.product-image', 'img.lazyload', '.product-listing-tile img'],
     skipAuFilter: true,
-    // Paginated seed URLs with 48 items per page (max) - covers all ~367 handles
-    // Furniture Handles & Knobs (category 11) - main handle section
     seedUrls: [
-      // Furniture Handles - page 1-8 (approx 300+ products)
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=1',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=2',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=3',
@@ -186,35 +186,37 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=6',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=7',
       '/en/products/furniture-door-handles/furniture-handles-knobs/11/?PageSize=48&PageNumber=8',
-      // Door Handles (category 13) - smaller section
       '/en/products/furniture-door-handles/door-handles/13/?PageSize=48&PageNumber=1',
     ],
-    // Firecrawl scrape options for JS-heavy/cookie-gated sites
     scrapeOptions: {
-      waitFor: 3000,  // Increased wait time for JS rendering
+      waitFor: 3000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-AU,en;q=0.9',
       },
     },
+    requiredNamePatterns: [/handle|pull|knob|grip|lever|flush/i],
   },
   'caesarstone': {
     productUrlPatterns: [/\/colours\//, /\/color\//, /\/collection\//, /\/products\//, /\/quartz\//],
     excludeUrlPatterns: [/\/find-a-retailer/, /\/contact/, /\/blog/, /\/professional/],
+    requiredNamePatterns: [/quartz|marble|calacatta|statuario|white|grey|concrete|pearl|mist/i],
   },
   'dekton': {
     productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /dekton.*colour/, /\/surfaces\//],
     excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/],
     skipAuFilter: true,
+    requiredNamePatterns: [/dekton|sintered|porcelain|stone|marble|concrete/i],
   },
-'silestone': {
+  'silestone': {
     productUrlPatterns: [/\/colours\//, /\/colors\//, /\/collection\//, /silestone.*colour/, /\/quartz\//, /\/silestone\//],
     excludeUrlPatterns: [/\/find-/, /\/contact/, /\/professional/, /\/blog/, /\/news/],
     skipAuFilter: true,
     mapFromRoot: true,
     rootDomain: 'https://www.cosentino.com',
     seedUrls: ['/en-au/silestone/colours/'],
+    requiredNamePatterns: [/silestone|quartz|marble|calacatta|white|grey|eternal/i],
   },
   'nikpol': {
     productUrlPatterns: [/\/product\//, /\/feelwood\//, /\/laminate\//, /\/board\//],
@@ -225,48 +227,48 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     productUrlPatterns: [/\/decor\//, /\/products\//, /\/eurodekor\//, /\/perfectsense\//],
     excludeUrlPatterns: [/\/contact/, /\/company/, /\/career/],
   },
-  // NEW SUPPLIER CONFIGS
-'smartstone': {
+  'smartstone': {
     productUrlPatterns: [/\/stones\//, /\/colours\//, /\/collection\//, /\/quartz\//, /\/range\//, /\/category\//],
     excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/inspiration/, /\/favourites/, /\/find-/, /\/professional/, /\/showrooms\//, /\/information\//],
     skipAuFilter: true,
-    useCrawlFallback: true,  // Nuxt.js SPA needs crawl
+    useCrawlFallback: true,
     seedUrls: ['/stones/', '/category/deluxe-price-range/', '/category/classic-price-range/', '/category/pure-price-range/'],
+    requiredNamePatterns: [/quartz|stone|marble|calacatta|carrara|athena|blanc|naxos/i],
   },
   'navurban': {
     productUrlPatterns: [/\/navurban\//, /\/product\//, /\/colours\//, /\/range\//, /\/timber\//, /\/veneers\//],
     excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/blog/],
-    skipAuFilter: true,  // newageveneer.com.au is Australian
-    seedUrls: ['/navurban/'],  // Single-page catalog with all 33 products
+    skipAuFilter: true,
+    seedUrls: ['/navurban/'],
   },
   'lithostone': {
     productUrlPatterns: [/\/lithostone\//, /\/compac\//, /\/sintered-stone\//, /\/colours\//, /\/quartz\//, /\/collection\//, /\/range\//, /\/product\//],
     excludeUrlPatterns: [/\/contact/, /\/about/, /\/blog/, /\/safety-facts/, /\/gallery\//, /\/care-and-maintenance/],
-    skipAuFilter: true,  // lithostonequartzsurfaces.com.au
-    seedUrls: ['/products/lithostone/', '/products/compac/', '/products/'],  // Main product pages
+    skipAuFilter: true,
+    seedUrls: ['/products/lithostone/', '/products/compac/', '/products/'],
   },
   'ydl-stone': {
     productUrlPatterns: [
       /\/products\/mineral\//,
       /\/products\/porcelain\//,
       /\/products\/natural-stone\//,
-      /\/products\/[^/]+\/[^/]+/,  // Product detail pages like /products/mineral/color-name
+      /\/products\/[^/]+\/[^/]+/,
     ],
     excludeUrlPatterns: [
       /\/contact/i, /\/about/i, /\/blog/i, /\/news/i,
-      /\/projects\/?$/i,  // Exclude /projects but not /products
+      /\/projects\/?$/i,
       /\/care-maintenance/i,
       /\/request-sample/i,
       /\/make-a-booking/i,
       /\/sample-page/i,
       /\/showroom/i,
       /\/gallery/i,
-      /^https:\/\/www\.ydlstone\.com\.au\/?$/,  // Exclude homepage
+      /^https:\/\/www\.ydlstone\.com\.au\/?$/,
     ],
     skipAuFilter: true,
     seedUrls: ['/products/mineral/', '/products/porcelain/', '/products/natural-stone/'],
   },
-  'ydl': {  // Alias for ydl-stone
+  'ydl': {
     productUrlPatterns: [
       /\/products\/mineral\//,
       /\/products\/porcelain\//,
@@ -290,7 +292,7 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
   'lavistone': {
     productUrlPatterns: [/\/our-range\//, /\/product\//, /\/product-category\//, /\/quartz\//, /\/natural-stone\//, /\/gen-surface\//, /\/porcelain\//],
     excludeUrlPatterns: [/\/contact/, /\/about/, /\/cart/, /\/checkout/, /\/my-account/, /\/blog/],
-    skipAuFilter: true,  // lavistone.com.au
+    skipAuFilter: true,
     seedUrls: ['/our-range/', '/product-category/gen-surface/', '/product-category/natural-stone/', '/product-category/porcelain/'],
   },
   'quantum-quartz': {
@@ -302,6 +304,88 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeUrlPatterns: [/\/contact/, /\/about/],
   },
 };
+
+// ============================================================================
+// IMAGE URL OPTIMIZATION - Get full-size images for all suppliers
+// ============================================================================
+
+function optimizeImageUrl(imageUrl: string, supplierSlug: string): string {
+  if (!imageUrl) return imageUrl;
+  
+  let optimized = imageUrl;
+  
+  switch (supplierSlug) {
+    case 'hafele':
+      // Hafele: /category_view/, /normal/, /thumbnail/ -> /huge/ for full product images
+      optimized = optimized.replace('/category_view/', '/huge/');
+      optimized = optimized.replace('/normal/', '/huge/');
+      optimized = optimized.replace('/thumbnail/', '/huge/');
+      optimized = optimized.replace('/medium/', '/huge/');
+      optimized = optimized.replace('/small/', '/huge/');
+      break;
+      
+    case 'polytec':
+    case 'laminex':
+    case 'essastone':
+    case 'nikpol':
+      // Remove thumbnail suffixes and size constraints
+      optimized = optimized.replace(/_thumb\./i, '.');
+      optimized = optimized.replace(/_small\./i, '.');
+      optimized = optimized.replace(/_medium\./i, '.');
+      optimized = optimized.replace(/-thumb\./i, '.');
+      optimized = optimized.replace(/-small\./i, '.');
+      // Remove dimension query params, use larger sizes
+      optimized = optimized.replace(/\?w=\d+(&h=\d+)?/i, '');
+      optimized = optimized.replace(/\?width=\d+(&height=\d+)?/i, '');
+      // If has resize params, bump them up
+      optimized = optimized.replace(/\/w_\d+,/i, '/w_800,');
+      optimized = optimized.replace(/\/h_\d+,/i, '/h_800,');
+      break;
+      
+    case 'caesarstone':
+    case 'smartstone':
+      // Cloudinary/CDN size transforms
+      optimized = optimized.replace(/\/w_\d+,/i, '/w_800,');
+      optimized = optimized.replace(/\/h_\d+,/i, '/h_800,');
+      optimized = optimized.replace(/\/c_thumb,/i, '/c_fill,');
+      optimized = optimized.replace(/\/c_scale,w_\d+/i, '/c_scale,w_800');
+      break;
+      
+    case 'dekton':
+    case 'silestone':
+      // Cosentino CDN - use larger image sizes
+      optimized = optimized.replace(/width=\d+/i, 'width=800');
+      optimized = optimized.replace(/height=\d+/i, 'height=800');
+      optimized = optimized.replace(/\/w_\d+/i, '/w_800');
+      break;
+      
+    case 'forestone':
+    case 'egger':
+      // EGGER often uses thumbnail paths
+      optimized = optimized.replace(/\/thumbnails\//i, '/images/');
+      optimized = optimized.replace(/_tn\./i, '.');
+      optimized = optimized.replace(/_thumb\./i, '.');
+      break;
+      
+    case 'navurban':
+    case 'lavistone':
+    case 'lithostone':
+      // WooCommerce/WordPress thumbnail patterns
+      optimized = optimized.replace(/-\d+x\d+\./i, '.'); // Remove -300x300. etc
+      optimized = optimized.replace(/-scaled\./i, '.');
+      optimized = optimized.replace(/-thumbnail\./i, '.');
+      break;
+      
+    default:
+      // Generic optimizations
+      optimized = optimized.replace(/_thumb\./i, '.');
+      optimized = optimized.replace(/_small\./i, '.');
+      optimized = optimized.replace(/-thumb\./i, '.');
+      optimized = optimized.replace(/-\d+x\d+\./i, '.');
+  }
+  
+  return optimized;
+}
 
 // ============================================================================
 // PRODUCT NAME VALIDATION - Filters out junk entries
@@ -443,6 +527,68 @@ function isValidProductName(name: string): boolean {
     
     // Image descriptions
     /\bimage\s*of\b.*\bin\b/i,
+    
+    // === ADDITIONAL JUNK PATTERNS ===
+    
+    // Cookie consent / GDPR
+    /^accept\s*(all\s*)?(cookies?)?$/i,
+    /^cookie\s*(preferences?|settings?|policy)?$/i,
+    /^manage\s*cookies?$/i,
+    /^reject\s*(all\s*)?cookies?$/i,
+    
+    // Cart/checkout elements
+    /^(view|go\s*to|proceed\s*to)\s*(cart|basket|checkout)$/i,
+    /^(added|add)\s*to\s*(cart|basket|wishlist)$/i,
+    /^remove\s*from\s*(cart|basket|wishlist)$/i,
+    /^(empty|clear)\s*(cart|basket)$/i,
+    /^continue\s*shopping$/i,
+    
+    // Form elements
+    /^subscribe(\s*now)?$/i,
+    /^request\s*a?\s*(quote|sample|callback|brochure)$/i,
+    /^get\s*(in\s*touch|started|quote)$/i,
+    /^send\s*(message|enquiry|request)$/i,
+    /^submit(\s*form)?$/i,
+    
+    // Social media prompts
+    /^follow\s*us(\s*on)?$/i,
+    /^share\s*(on|via|this)$/i,
+    /^connect\s*with\s*us$/i,
+    /^join\s*(our\s*)?(newsletter|mailing\s*list)$/i,
+    
+    // Video/media controls
+    /^play(\s*video)?$/i,
+    /^watch\s*(now|video)$/i,
+    /^pause$/i,
+    /^mute$/i,
+    /^unmute$/i,
+    
+    // Navigation breadcrumbs
+    /^(you\s*are\s*here|breadcrumb)$/i,
+    /^back\s*to\s*(top|home|products)$/i,
+    
+    // Loading states
+    /^(loading|fetching|please\s*wait)\.{0,3}$/i,
+    /^processing\.{0,3}$/i,
+    
+    // Price-only strings
+    /^\$[\d,]+(\.\d{2})?$/,
+    /^(from\s*)?\$[\d,]+/i,
+    /^(rrp|was|now|save)\s*\$[\d,]+/i,
+    
+    // SKU-only (no descriptive name)
+    /^[A-Z]{2,5}-?\d{4,}$/,
+    /^\d{5,}$/,
+    
+    // Common website UI text
+    /^(skip\s*to|go\s*to)\s*(main\s*)?content$/i,
+    /^(toggle|open|close)\s*(menu|nav|sidebar)$/i,
+    /^(select|choose)\s*(an?\s*)?(option|colour|color|size)$/i,
+    /^(sort|filter)\s*by$/i,
+    /^showing\s*\d+\s*(of|-)?\s*\d+/i,
+    /^page\s*\d+(\s*of\s*\d+)?$/i,
+    /^\d+\s*(items?|products?|results?)$/i,
+    /^no\s*(results?|products?)\s*found$/i,
   ];
   
   // Also reject if it looks like a generic category name
@@ -483,7 +629,6 @@ function isGenericCategoryName(name: string): boolean {
   }
   
   // Check if name is just a product type with no color qualifier
-  // e.g. "Laminate HPL" is generic, "White Oak Laminate" is not
   for (const category of genericCategoryNames) {
     if (lowerName === category || lowerName === category + 's') {
       return true;
@@ -491,6 +636,48 @@ function isGenericCategoryName(name: string): boolean {
   }
   
   return false;
+}
+
+// ============================================================================
+// SUPPLIER-SPECIFIC PRODUCT VALIDATION
+// ============================================================================
+
+function isValidProductForSupplier(product: ScrapedProduct, supplierSlug: string, config?: SupplierConfig): boolean {
+  const nameLower = product.name.toLowerCase();
+  const urlLower = (product.source_url || '').toLowerCase();
+  
+  // Check exclude patterns first (these override includes)
+  if (config?.excludeNamePatterns) {
+    if (config.excludeNamePatterns.some(p => p.test(nameLower))) {
+      return false;
+    }
+  }
+  
+  // Hafele-specific: must be a handle product
+  if (supplierSlug === 'hafele') {
+    const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
+    const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
+                                 urlLower.includes('door-handles') ||
+                                 urlLower.includes('handles-knobs') ||
+                                 urlLower.includes('/11/') ||
+                                 urlLower.includes('/13/');
+    if (!nameIsHandle && !urlIsHandleCategory) {
+      return false;
+    }
+  }
+  
+  // Check required patterns (if specified, at least one must match)
+  if (config?.requiredNamePatterns && config.requiredNamePatterns.length > 0) {
+    const matchesRequired = config.requiredNamePatterns.some(p => p.test(nameLower));
+    // For URLs that match product category, we're more lenient
+    const urlMatchesProductPattern = config.productUrlPatterns?.some(p => p.test(urlLower)) || false;
+    
+    if (!matchesRequired && !urlMatchesProductPattern) {
+      return false;
+    }
+  }
+  
+  return true;
 }
 
 // ============================================================================
@@ -507,7 +694,6 @@ function isErrorPage(html: string): { isError: boolean; reason: string } {
     { pattern: /requested page cannot be found/i, reason: 'Requested page not found' },
     { pattern: /<title>[^<]*(?:404|not found|page error)[^<]*<\/title>/i, reason: '404 title detected' },
     { pattern: /<body[^>]*class="[^"]*error404[^"]*"/i, reason: 'WordPress error404 body class' },
-    // Very specific maintenance page patterns (NOT general product pages mentioning maintenance)
     { pattern: /<h1[^>]*>.*(?:under maintenance|site maintenance|scheduled maintenance).*<\/h1>/i, reason: 'Maintenance page' },
     { pattern: /class="[^"]*maintenance-page[^"]*"/i, reason: 'Maintenance page class' },
   ];
@@ -519,7 +705,6 @@ function isErrorPage(html: string): { isError: boolean; reason: string } {
   }
   
   // Check if page has very little content (likely an error page)
-  // But be more generous - 100 chars is enough for small error pages
   const textContent = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   if (textContent.length < 100) {
     return { isError: true, reason: 'Page has very little content' };
@@ -868,6 +1053,9 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     if (resolvedUrl.includes('.svg') || resolvedUrl.includes('data:image')) return;
     if (resolvedUrl.includes('logo') || resolvedUrl.includes('icon') || resolvedUrl.includes('sprite')) return;
     
+    // Optimize image URL for this supplier
+    resolvedUrl = optimizeImageUrl(resolvedUrl, supplierSlug || '');
+    
     products.push({
       name: trimmedName,
       image_url: resolvedUrl,
@@ -900,104 +1088,65 @@ function extractProductsFromHtml(html: string, pageUrl: string, baseUrl: string,
     const cosentinoCdnPattern = /<img[^>]+src=["'](https:\/\/(?:assetstools|assets)\.cosentino\.com[^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?/gi;
     for (const match of html.matchAll(cosentinoCdnPattern)) {
       if (match[1]) {
-        const altText = match[2] || '';
-        if (altText && altText.length > 2 && altText.length < 80) {
-          addProduct(altText, match[1]);
+        const imageUrl = match[1];
+        // Try to extract name from URL path
+        let name = match[2] || '';
+        if (!name) {
+          const pathParts = imageUrl.split('/');
+          const lastPart = pathParts[pathParts.length - 1];
+          name = lastPart.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+        if (name && name.length > 2) {
+          addProduct(name, imageUrl);
         }
       }
     }
     
-    // Cosentino data-lazy-src pattern (used in colour grid)
-    const dataLazySrcPattern = /<img[^>]+data-lazy-src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
-    for (const match of html.matchAll(dataLazySrcPattern)) {
-      if (match[1] && match[2] && match[2].length > 2 && match[2].length < 80) {
-        addProduct(match[2], match[1]);
-      }
-    }
-    
-    // Cosentino inspiration class pattern
-    const inspirationPattern = /<div[^>]*class="[^"]*inspiration[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-lazy-src|src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
-    for (const match of html.matchAll(inspirationPattern)) {
-      if (match[1] && match[2] && match[2].length > 2 && match[2].length < 80) {
-        addProduct(match[2], match[1]);
-      }
-    }
-    
-    // Cosentino colour/color card with title div
-    const titleCardPattern = /<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]{2,60})<\/div>[\s\S]*?<img[^>]+(?:src|data-lazy-src)=["']([^"']+)["']/gi;
-    for (const match of html.matchAll(titleCardPattern)) {
-      if (match[1] && match[2]) {
-        addProduct(match[1], match[2]);
-      }
-    }
-    
-    // Reverse pattern: img before title
-    const imgBeforeTitlePattern = /<img[^>]+(?:src|data-lazy-src)=["']([^"']+)["'][^>]*>[\s\S]*?<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]{2,60})<\/div>/gi;
-    for (const match of html.matchAll(imgBeforeTitlePattern)) {
+    // Pattern for colour cards with title attributes
+    const colourCardPattern = /<a[^>]*class="[^"]*colour[^"]*"[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?<(?:h[2-4]|span|div|p)[^>]*>([^<]+)</gi;
+    for (const match of html.matchAll(colourCardPattern)) {
       if (match[1] && match[2]) {
         addProduct(match[2], match[1]);
-      }
-    }
-    
-    // Markdown-style images (for sites that return markdown-like content)
-    const markdownImages = html.matchAll(/!\[([^\]]+)\]\((https:\/\/[^)]+)\)/g);
-    for (const match of markdownImages) {
-      if (match[1] && match[2]) {
-        addProduct(match[1], match[2]);
-      }
-    }
-    
-    // Product cards with colour/color class
-    const colourCards = html.matchAll(/<div[^>]*class="[^"]*(?:colour|color|swatch|product-card|product-item)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:span|p|h[2-6]|div)[^>]*>([^<]{2,60})</gi);
-    for (const match of colourCards) {
-      if (match[1] && match[2]) {
-        addProduct(match[2], match[1]);
-      }
-    }
-    
-    // Structured product data
-    const productDataMatches = html.matchAll(/data-product[^=]*=["']([^"']+)["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/gi);
-    for (const match of productDataMatches) {
-      if (match[1] && match[2]) {
-        try {
-          const productData = JSON.parse(decodeURIComponent(match[1]));
-          if (productData.name) {
-            addProduct(productData.name, match[2]);
-          }
-        } catch {
-          // Ignore parse errors
-        }
       }
     }
   }
   
-  // Caesarstone patterns
-  if (supplierSlug === 'caesarstone') {
-    const caesarstonePatterns = [
-      /<div[^>]*class="[^"]*(?:colour|color|product|swatch)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<(?:span|p|h[2-6])[^>]*>([^<]{2,60})</gi,
-      /<a[^>]*href="[^"]*colour[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
-    ];
-    for (const pattern of caesarstonePatterns) {
-      for (const match of html.matchAll(pattern)) {
-        if (match[1] && match[2]) {
-          addProduct(match[2], match[1]);
-        }
-      }
-    }
-  }
-  
-  // Smartstone patterns (modern Next.js site)
+  // Smartstone patterns - Nuxt.js SPA with unique structure
   if (supplierSlug === 'smartstone') {
-    const smartstonePatterns = [
-      /<div[^>]*class="[^"]*(?:stone|colour|product|swatch|card)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src|srcset)=["']([^"'\s]+)[^"']*["'][^>]*(?:alt=["']([^"']+)["'])?/gi,
-      /<a[^>]*href="[^"]*(?:stone|colour)[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
-      /<img[^>]+(?:data-nimg)[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']+)["']/gi,
-    ];
-    for (const pattern of smartstonePatterns) {
-      for (const match of html.matchAll(pattern)) {
-        if (match[1] && match[2]) {
-          addProduct(match[2], match[1]);
-        }
+    // Pattern 1: data-v- attributes with links to stones
+    const smartstonePattern = /<a[^>]*href="\/stones\/[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']+)["'])?[\s\S]*?<(?:h[2-4]|span|div)[^>]*class="[^"]*(?:name|title)[^"]*"[^>]*>([^<]+)</gi;
+    for (const match of html.matchAll(smartstonePattern)) {
+      const name = match[3] || match[2];
+      if (match[1] && name) {
+        addProduct(name, match[1]);
+      }
+    }
+    
+    // Pattern 2: Stone cards with nuxt-link
+    const stoneCardPattern = /<nuxt-link[^>]*to="\/stones\/[^"]*"[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<[^>]*>([^<]{2,50})</gi;
+    for (const match of html.matchAll(stoneCardPattern)) {
+      if (match[1] && match[2]) {
+        addProduct(match[2], match[1]);
+      }
+    }
+  }
+  
+  // YDL Stone patterns - WordPress/Elementor
+  if (supplierSlug === 'ydl' || supplierSlug === 'ydl-stone') {
+    // Pattern 1: Elementor product cards
+    const ydlPattern = /<div[^>]*class="[^"]*elementor-widget-image[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*(?:alt="([^"]*)")?[\s\S]*?<(?:h[2-4]|div)[^>]*class="[^"]*(?:title|heading)[^"]*"[^>]*>([^<]+)</gi;
+    for (const match of html.matchAll(ydlPattern)) {
+      const name = match[3] || match[2];
+      if (match[1] && name) {
+        addProduct(name, match[1]);
+      }
+    }
+    
+    // Pattern 2: Product grid items
+    const gridPattern = /<div[^>]*class="[^"]*jet-listing-grid__item[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"/gi;
+    for (const match of html.matchAll(gridPattern)) {
+      if (match[1] && match[2]) {
+        addProduct(match[2], match[1]);
       }
     }
   }
@@ -1384,6 +1533,45 @@ async function linkScrapeFallback(url: string, firecrawlKey: string, baseUrl: st
 }
 
 // ============================================================================
+// CLEANUP OLD PRODUCTS - Delete old items before re-scraping
+// ============================================================================
+
+async function cleanupOldProducts(supabase: any, supplierId: string, supplierName: string): Promise<number> {
+  console.log(`Cleaning up old products for supplier ${supplierName} (${supplierId})`);
+  
+  try {
+    // Count existing products first
+    const { count: existingCount } = await supabase
+      .from('catalog_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('supplier_id', supplierId);
+    
+    console.log(`Found ${existingCount || 0} existing products to delete`);
+    
+    if (existingCount && existingCount > 0) {
+      // Delete all existing products for this supplier
+      const { error } = await supabase
+        .from('catalog_items')
+        .delete()
+        .eq('supplier_id', supplierId);
+      
+      if (error) {
+        console.error('Error deleting old products:', error);
+        return 0;
+      }
+      
+      console.log(`Successfully deleted ${existingCount} old products`);
+      return existingCount;
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('Error in cleanupOldProducts:', error);
+    return 0;
+  }
+}
+
+// ============================================================================
 // WORK MODE HANDLER - Process batch of queued URLs
 // ============================================================================
 
@@ -1445,59 +1633,42 @@ async function handleWorkMode(
       .eq('job_id', jobId)
       .eq('status', 'processing')
       .limit(1);
-
+    
     if (processingUrls && processingUrls.length > 0) {
       return new Response(
         JSON.stringify({
           success: true,
           jobId,
           status: 'in_progress',
-          urlsRemaining: 1,
-          message: 'A batch is currently processing. Please retry in a moment.',
+          message: 'Another batch is still processing',
+          batchProcessed: 0,
+          urlsRemaining: 0,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // No more URLs to process - mark job as complete
-    const { data: stats } = await supabase
-      .from('scrape_job_urls')
-      .select('status, products_inserted')
-      .eq('job_id', jobId);
-
-    const totalInserted = stats?.reduce((sum: number, u: any) => sum + (u.products_inserted || 0), 0) || 0;
-    const completedCount = stats?.filter((u: any) => u.status === 'completed').length || 0;
-    const failedCount = stats?.filter((u: any) => u.status === 'failed').length || 0;
-
+    
+    // Mark job as completed
     await supabase
       .from('scrape_jobs')
       .update({
         status: 'completed',
-        urls_completed: completedCount,
-        pages_scraped: completedCount,
-        pages_failed: failedCount,
-        products_inserted: totalInserted,
         completed_at: new Date().toISOString(),
       })
       .eq('id', jobId);
-
+    
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         jobId,
         status: 'completed',
+        message: 'All URLs have been processed',
+        batchProcessed: 0,
         urlsRemaining: 0,
-        totalInserted,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-  
-  // Update job status
-  await supabase
-    .from('scrape_jobs')
-    .update({ status: 'scraping', current_url: pendingUrls[0].url })
-    .eq('id', jobId);
   
   // Parse base URL from first URL
   let baseUrl: string;
@@ -1600,6 +1771,8 @@ async function handleWorkMode(
             if (!imageUrl.startsWith('http')) {
               imageUrl = baseUrl + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
             }
+            // Optimize image URL
+            imageUrl = optimizeImageUrl(imageUrl, supplierSlug);
             extractedProducts.push({
               name: p.name,
               image_url: imageUrl,
@@ -1642,32 +1815,14 @@ async function handleWorkMode(
       for (const product of extractedProducts) {
         if (!isValidProductName(product.name)) continue;
         
-        // Hafele filter - loosened to accept plurals/variants + category URL hints
-        if (supplier.slug === 'hafele') {
-          const nameLower = product.name.toLowerCase();
-          const urlLower = (product.source_url || '').toLowerCase();
-          
-          // Accept if name contains handle/pull/knob variants (including plurals)
-          const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
-          
-          // Accept if URL indicates it's from handles category
-          const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
-                                       urlLower.includes('door-handles') ||
-                                       urlLower.includes('handles-knobs') ||
-                                       urlLower.includes('/11/') ||  // Category 11 = Furniture Handles
-                                       urlLower.includes('/13/');   // Category 13 = Door Handles
-          
-          if (!nameIsHandle && !urlIsHandleCategory) {
-            continue;
-          }
+        // Apply supplier-specific filtering
+        if (!isValidProductForSupplier(product, supplierSlug, config)) {
+          console.log(`  Filtered out product: "${product.name}" (doesn't match supplier requirements)`);
+          continue;
         }
         
-        // Hafele image URL transformation: use /huge/ instead of /category_view/ for full product images
-        let finalImageUrl = product.image_url;
-        if (supplier.slug === 'hafele' && finalImageUrl.includes('/category_view/')) {
-          finalImageUrl = finalImageUrl.replace('/category_view/', '/huge/');
-          console.log(`  Transformed Hafele image: ${product.image_url} -> ${finalImageUrl}`);
-        }
+        // Image URL is already optimized in extractProductsFromHtml
+        const finalImageUrl = product.image_url;
         
         const classification = detectProductClassification(product.source_url, product.name, supplier);
         const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
@@ -1773,6 +1928,7 @@ Deno.serve(async (req) => {
     const mode = options?.mode || 'full';  // 'full', 'plan', or 'work'
     const existingJobId = options?.jobId;  // For 'work' mode
     const batchSize = options?.batchSize || 10;  // URLs to process per batch
+    const skipCleanup = options?.skipCleanup === true;  // Skip deleting old products
 
     if (!supplierId) {
       return new Response(
@@ -1831,6 +1987,14 @@ Deno.serve(async (req) => {
       return await handleWorkMode(supabase, existingJobId, batchSize, supplier, supplierSlug, config, firecrawlKey);
     }
 
+    // =========================================================================
+    // CLEANUP OLD PRODUCTS (unless skipCleanup is true or dry run)
+    // =========================================================================
+    let deletedCount = 0;
+    if (!isDryRun && !skipCleanup && (mode === 'full' || mode === 'plan')) {
+      deletedCount = await cleanupOldProducts(supabase, supplierId, supplier.name);
+    }
+
     // For dry run, skip creating a job
     let jobId: string | null = null;
     if (!isDryRun) {
@@ -1881,6 +2045,9 @@ Deno.serve(async (req) => {
     // Check if base URL is Australian
     const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
     console.log(`Starting catalog scrape for ${supplier.name} from ${url} (Australian: ${isAustraliaSite}, slug: ${supplierSlug})`);
+    if (deletedCount > 0) {
+      console.log(`Cleaned up ${deletedCount} old products before scraping`);
+    }
 
     // Step 1: Map the entire website
     console.log('Step 1: Mapping website...');
@@ -1978,26 +2145,15 @@ Deno.serve(async (req) => {
           return false;
         }
       });
-      console.log(`Filtered to ${allUrls.length} URLs for sub-brand path: ${pathPrefix}`);
+      console.log(`Filtered to ${allUrls.length} URLs matching sub-brand path: ${pathPrefix}`);
     }
 
-    // Step 2: Filter to product-related URLs
-    const requireAustralian = !isAustraliaSite;
-    let productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, requireAustralian);
-    console.log(`Filtered to ${productUrls.length} product-related URLs (AU filter: ${requireAustralian})`);
+    // Step 2: Filter to product URLs
+    console.log('Step 2: Filtering to product URLs...');
+    let productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, !isAustraliaSite);
+    console.log(`Found ${productUrls.length} potential product URLs`);
     
-    // Fallback: If no product URLs found, try link-scrape fallback
-    if (productUrls.length === 0) {
-      console.log('No product URLs found, trying link-scrape fallback...');
-      const fallbackLinks = await linkScrapeFallback(url, firecrawlKey, baseUrl);
-      if (fallbackLinks.length > 0) {
-        productUrls = filterProductUrls(fallbackLinks, baseUrl, supplierSlug, requireAustralian);
-        console.log(`Link-scrape fallback yielded ${productUrls.length} product URLs`);
-      }
-    }
-    
-    // For sub-brands with requireBrandInUrl, ALWAYS scrape the original URL first
-    // since it likely contains all products filtered by brand (e.g., ?brand=Essastone)
+    // For sub-brands, apply stricter filtering
     if (config.requireBrandInUrl) {
       console.log(`Sub-brand detected (${supplierSlug}), prioritizing original URL: ${url}`);
       // Filter productUrls to only those containing the brand name
@@ -2204,6 +2360,7 @@ Deno.serve(async (req) => {
           jobId: jobId,
           urlsQueued: urlsToScrape.length,
           urlsMapped: allUrls.length,
+          oldProductsDeleted: deletedCount,
           message: `Queued ${urlsToScrape.length} URLs for batch processing. Call with mode='work' to start.`,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -2309,6 +2466,9 @@ Deno.serve(async (req) => {
                 imageUrl = baseUrl + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
               }
               
+              // Optimize image URL
+              imageUrl = optimizeImageUrl(imageUrl, supplierSlug);
+              
               extractedProducts.push({
                 name: p.name,
                 image_url: imageUrl,
@@ -2384,8 +2544,9 @@ Deno.serve(async (req) => {
       current_url: null,
     });
 
-    // Step 4: Deduplicate and validate products by name (case-insensitive)
-    const seenProducts = new Set<string>();
+    // Step 4: Deduplicate and validate products by name AND image URL
+    const seenNames = new Set<string>();
+    const seenImages = new Set<string>();
     const uniqueProducts = allProducts.filter(p => {
       // Apply validation filter
       if (!isValidProductName(p.name)) {
@@ -2393,30 +2554,28 @@ Deno.serve(async (req) => {
         return false;
       }
       
-      // Supplier-specific product filtering - loosened for Hafele
-      if (supplier.slug === 'hafele') {
-        const nameLower = p.name.toLowerCase();
-        const urlLower = (p.source_url || '').toLowerCase();
-        
-        // Accept if name contains handle/pull/knob variants (including plurals)
-        const nameIsHandle = /handle|pull|knob|grip|lever|flush/i.test(nameLower);
-        
-        // Accept if URL indicates it's from handles category
-        const urlIsHandleCategory = urlLower.includes('furniture-handles') || 
-                                     urlLower.includes('door-handles') ||
-                                     urlLower.includes('handles-knobs') ||
-                                     urlLower.includes('/11/') ||  // Category 11 = Furniture Handles
-                                     urlLower.includes('/13/');   // Category 13 = Door Handles
-        
-        if (!nameIsHandle && !urlIsHandleCategory) {
-          console.log(`  Filtered out non-handle Hafele product: "${p.name}"`);
-          return false;
-        }
+      // Apply supplier-specific product filtering
+      if (!isValidProductForSupplier(p, supplierSlug, config)) {
+        console.log(`  Filtered out product: "${p.name}" (doesn't match supplier requirements)`);
+        return false;
       }
       
-      const key = p.name.toLowerCase().trim();
-      if (seenProducts.has(key)) return false;
-      seenProducts.add(key);
+      // Deduplicate by name
+      const nameKey = p.name.toLowerCase().trim();
+      if (seenNames.has(nameKey)) {
+        console.log(`  Filtered out duplicate name: "${p.name}"`);
+        return false;
+      }
+      
+      // Deduplicate by image URL (strip query params for comparison)
+      const imageKey = p.image_url.split('?')[0].toLowerCase();
+      if (seenImages.has(imageKey)) {
+        console.log(`  Filtered out duplicate image: "${p.name}" has same image as another product`);
+        return false;
+      }
+      
+      seenNames.add(nameKey);
+      seenImages.add(imageKey);
       return true;
     });
     
@@ -2531,6 +2690,7 @@ Deno.serve(async (req) => {
         supplier: supplier.name,
         isAustralianSite: isAustraliaSite,
         supplierConfig: config ? 'custom' : 'generic',
+        oldProductsDeleted: deletedCount,
         stats: {
           urlsMapped: allUrls.length,
           productUrlsFound: productUrls.length,
