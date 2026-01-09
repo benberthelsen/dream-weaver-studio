@@ -1438,16 +1438,37 @@ async function handleWorkMode(
   }
   
   if (!pendingUrls || pendingUrls.length === 0) {
+    // If another invocation is currently processing URLs, don't mark the job as completed.
+    const { data: processingUrls } = await supabase
+      .from('scrape_job_urls')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('status', 'processing')
+      .limit(1);
+
+    if (processingUrls && processingUrls.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          jobId,
+          status: 'in_progress',
+          urlsRemaining: 1,
+          message: 'A batch is currently processing. Please retry in a moment.',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // No more URLs to process - mark job as complete
     const { data: stats } = await supabase
       .from('scrape_job_urls')
       .select('status, products_inserted')
       .eq('job_id', jobId);
-    
+
     const totalInserted = stats?.reduce((sum: number, u: any) => sum + (u.products_inserted || 0), 0) || 0;
     const completedCount = stats?.filter((u: any) => u.status === 'completed').length || 0;
     const failedCount = stats?.filter((u: any) => u.status === 'failed').length || 0;
-    
+
     await supabase
       .from('scrape_jobs')
       .update({
@@ -1459,7 +1480,7 @@ async function handleWorkMode(
         completed_at: new Date().toISOString(),
       })
       .eq('id', jobId);
-    
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -1897,6 +1918,25 @@ Deno.serve(async (req) => {
       await updateJob({ urls_mapped: allUrls.length });
     }
 
+    // Hafele special: mapping often returns only the start URL due to cookie/session gating.
+    // Use configured seed URLs to discover product detail links via link-scrape.
+    if (supplierSlug === 'hafele' && config.seedUrls && config.seedUrls.length > 0) {
+      const seedAbsoluteUrls = config.seedUrls.map(p => (p.startsWith('http') ? p : baseUrl + p));
+      const discovered: string[] = [];
+
+      for (const seedUrl of seedAbsoluteUrls) {
+        const links = await linkScrapeFallback(seedUrl, firecrawlKey, baseUrl);
+        discovered.push(seedUrl, ...links);
+      }
+
+      const merged = [...new Set([...allUrls, ...discovered])];
+      if (merged.length > allUrls.length) {
+        allUrls = merged;
+        console.log(`Hafele seed discovery added URLs; now have ${allUrls.length} total URLs`);
+        await updateJob({ urls_mapped: allUrls.length });
+      }
+    }
+
     // If we mapped from root domain for a sub-brand, filter to relevant URLs
     if (config.mapFromRoot && config.rootDomain) {
       const originalUrl = new URL(url);
@@ -1963,8 +2003,9 @@ Deno.serve(async (req) => {
       }
     }
     
-    // Fallback: Use seedUrls if configured and still no product URLs
-    if (productUrls.length === 0 && config.seedUrls && config.seedUrls.length > 0) {
+    // Fallback: Use seedUrls if configured and product URL discovery looks too small
+    const seedMinCount = supplierSlug === 'hafele' ? 5 : 0;
+    if ((productUrls.length === 0 || (seedMinCount > 0 && productUrls.length < seedMinCount)) && config.seedUrls && config.seedUrls.length > 0) {
       console.log(`Using seedUrls fallback: ${config.seedUrls.join(', ')}`);
       for (const seedPath of config.seedUrls) {
         const seedUrl = seedPath.startsWith('http') ? seedPath : baseUrl + seedPath;
@@ -1979,8 +2020,18 @@ Deno.serve(async (req) => {
       console.log('No product URLs found, falling back to original URL');
       productUrls = [url];
     }
-    
-    const maxPages = isDryRun ? Math.min(options?.maxPages || 3, 3) : (options?.maxPages || 50);
+
+    // Hafele: prefer scraping product detail pages (P-xxxx) rather than category listings
+    if (supplierSlug === 'hafele') {
+      const detailUrls = productUrls.filter(u => /\/product\//i.test(u) && /\/P-\d+/i.test(u));
+      if (detailUrls.length > 0) {
+        productUrls = [...new Set(detailUrls)];
+        console.log(`Hafele: narrowed to ${productUrls.length} product detail URLs`);
+      }
+    }
+
+    const defaultMaxPages = supplierSlug === 'hafele' ? 500 : 50;
+    const maxPages = isDryRun ? Math.min(options?.maxPages || 3, 3) : (options?.maxPages || defaultMaxPages);
     const urlsToScrape = productUrls.slice(0, maxPages);
     
     // DRY RUN: Return diagnostics without inserting data
