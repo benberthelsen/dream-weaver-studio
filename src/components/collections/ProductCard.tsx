@@ -28,11 +28,11 @@ export function ProductCard({ item, onAddToBoard }: ProductCardProps) {
   return (
     <div className="group relative bg-card rounded-xl overflow-hidden border transition-all hover:shadow-lg hover:-translate-y-1">
       {/* Image */}
-      <div className="aspect-square relative overflow-hidden bg-muted">
+      <div className="aspect-square relative overflow-hidden bg-white">
         <img
           src={item.image_url}
           alt={item.name}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
         
