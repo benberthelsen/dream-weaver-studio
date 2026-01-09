@@ -1662,6 +1662,13 @@ async function handleWorkMode(
           }
         }
         
+        // Hafele image URL transformation: use /huge/ instead of /category_view/ for full product images
+        let finalImageUrl = product.image_url;
+        if (supplier.slug === 'hafele' && finalImageUrl.includes('/category_view/')) {
+          finalImageUrl = finalImageUrl.replace('/category_view/', '/huge/');
+          console.log(`  Transformed Hafele image: ${product.image_url} -> ${finalImageUrl}`);
+        }
+        
         const classification = detectProductClassification(product.source_url, product.name, supplier);
         const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
         
@@ -1671,7 +1678,7 @@ async function handleWorkMode(
             supplier_id: supplier.id,
             category_id: categoryId,
             name: product.name,
-            image_url: product.image_url,
+            image_url: finalImageUrl,
             color: product.color,
             material: product.material,
             source_url: product.source_url,
