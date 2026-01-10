@@ -113,6 +113,54 @@ function extractBrand(sourceUrl: string, productName: string, supplierSlug: stri
   return supplierName;
 }
 
+// Extract finish type from Laminex product URLs
+// URL format: /products/{colour-name}/{FINISH}/p/{code}
+function extractLaminexFinish(url: string): string | undefined {
+  // Match /products/{name}/{FINISH}/p/{code}
+  const match = url.match(/\/products\/[^/]+\/([^/]+)\/p\//i);
+  if (match) {
+    const finish = match[1].toLowerCase();
+    // Map URL finish to display name
+    const finishMap: Record<string, string> = {
+      'absolutematte': 'AbsoluteMatte',
+      'absolutegrain': 'AbsoluteGrain',
+      'absolutegloss': 'AbsoluteGloss',
+      'absolutemattpan': 'AbsoluteMatPan',
+      'natural': 'Natural',
+      'nuance': 'Nuance',
+      'legato': 'Legato',
+      'silk': 'Silk',
+      'polar': 'Polar',
+      'chalk': 'Chalk',
+      'puregrain': 'PureGrain',
+      'riven': 'Riven',
+      'fresh': 'Fresh',
+    };
+    return finishMap[finish] || finish.charAt(0).toUpperCase() + finish.slice(1);
+  }
+  
+  // Also try to extract from URL query parameters or path segments
+  const finishPatterns = [
+    /R_ABSOLUTEMATTE/i,
+    /R_ABSOLUTEGRAIN/i,
+    /R_ABSOLUTEGLOSS/i,
+    /R_NATURAL/i,
+    /R_NUANCE/i,
+    /R_LEGATO/i,
+    /R_SILK/i,
+  ];
+  
+  for (const pattern of finishPatterns) {
+    if (pattern.test(url)) {
+      const finishName = pattern.source.replace('R_', '').replace(/\\/gi, '');
+      // Capitalize properly
+      return finishName.charAt(0) + finishName.slice(1).toLowerCase();
+    }
+  }
+  
+  return undefined;
+}
+
 // Supplier-specific configuration
 interface SupplierConfig {
   productUrlPatterns?: RegExp[];
@@ -2490,7 +2538,7 @@ async function runScrapingTask(
     // Supplier-specific page limits
     const SUPPLIER_PAGE_LIMITS: Record<string, number> = {
       'hafele': 500,
-      'laminex': 200,  // Laminex has many product ranges
+      'laminex': 500,  // Laminex has many product ranges x finishes
       'forestone': 150,
       'polytec': 150,
     };
@@ -2699,17 +2747,33 @@ async function runScrapingTask(
             const categoryId = getCategoryId(supplierSlug, supplier.category, classification.product_type, classification.usage_types);
             const brand = extractBrand(product.source_url, product.name, supplierSlug, supplier.name);
             
+            // For Laminex: extract finish from URL and make product name unique per finish
+            let finalProductName = product.name;
+            let finishType = product.finish_type;
+            
+            if (supplierSlug === 'laminex') {
+              const extractedFinish = extractLaminexFinish(product.source_url);
+              if (extractedFinish) {
+                finishType = extractedFinish;
+                // Append finish to name if not already present (for unique products per finish)
+                if (!finalProductName.toLowerCase().includes(extractedFinish.toLowerCase())) {
+                  finalProductName = `${product.name} ${extractedFinish}`;
+                }
+                console.log(`[BG]   Laminex finish: ${product.name} -> ${finalProductName} (${extractedFinish})`);
+              }
+            }
+            
             const { error } = await supabase
               .from('catalog_items')
               .upsert({
                 supplier_id: supplierId,
                 category_id: categoryId,
-                name: product.name,
+                name: finalProductName,
                 image_url: product.image_url,
                 brand: brand,
                 color: product.color,
                 material: product.material,
-                finish_type: product.finish_type,
+                finish_type: finishType,
                 hex_color: product.hex_color,
                 source_url: product.source_url,
                 sku: product.sku,
