@@ -53,7 +53,11 @@ const BRAND_MAPPINGS: Record<string, BrandMapping[]> = {
     { pattern: /^[UH]\d{3,4}\s|ST\d{2}$/i, brand: 'EGGER' },
   ],
   'laminex': [
-    { pattern: /formica/i, brand: 'Formica' },
+    { pattern: /\/brands\/formica|formica/i, brand: 'Formica' },
+    { pattern: /\/brands\/hi-macs|himacs|hi-macs/i, brand: 'HIMACS' },
+    { pattern: /\/brands\/fusion|fusion/i, brand: 'Fusion' },
+    { pattern: /\/brands\/surround|surround/i, brand: 'Surround by Laminex' },
+    { pattern: /\/brands\/trade-essentials|trade.essentials/i, brand: 'Trade Essentials' },
     { pattern: /essastone/i, brand: 'Essastone' },
     // Default will be 'Laminex'
   ],
@@ -140,11 +144,79 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeNamePatterns: [/showroom|samples|brochure|download|pdf/i],
   },
   'laminex': {
-    productUrlPatterns: [/\/products\/.*\/colours/, /\/decorative-surfaces/, /\/colours\//, /\/benchtops\//, /\/essastone\//, /\/minerals\//],
-    excludeUrlPatterns: [/\/location\//, /\/find-a-retailer/, /\/contact/, /\/sustainability/, /\/inspirations\//, /\/sample/],
-    mapFromRoot: false,
-    requiredNamePatterns: [/colour|decor|woodgrain|mineral|solid|white|grey|oak|walnut|charcoal/i],
-    excludeNamePatterns: [/sustainability|blog|news|location|brochure/i],
+    // Target actual product pages with /p/ pattern (individual products)
+    productUrlPatterns: [
+      /\/products\/[^/]+\/[^/]+\/p\/[A-Z]{2}\d+/i,  // /products/{name}/{finish}/p/{code}
+      /\/p\/AU\d+/i,  // Any product page with AU code
+      /\/p\/NZ\d+/i,  // NZ product codes
+      /\/products\/.*\/colours/,  // Colours pages
+      /\/decorative-surfaces/,
+      /\/colours\//,
+      /\/benchtops\//,
+      /\/minerals\//,
+    ],
+    excludeUrlPatterns: [
+      /\/location\//,
+      /\/find-a-retailer/,
+      /\/contact/,
+      /\/sustainability/,
+      /\/inspirations\//,
+      /\/sample/,
+      /\/cart/,
+      /\/login/,
+      /\/register/,
+      /\/account/,
+      /\.pdf$/,
+      /\.xml$/,
+      /system-maintenance/,
+    ],
+    mapFromRoot: true,  // Map from root to find all products
+    skipAuFilter: true,
+    // Seed URLs for each brand section
+    seedUrls: [
+      '/browse/brands/laminex',
+      '/browse/brands/formica',
+      '/browse/brands/hi-macs',
+      '/browse/brands/fusion',
+      '/browse/brands/surround-by-laminex',
+      '/browse/brands/trade-essentials',
+      '/products/decorative-surfaces',
+      '/products/benchtops',
+    ],
+    // Sub-brands for Laminex with proper product type classification
+    subBrands: {
+      'himacs': {
+        urlPattern: /himacs|hi-macs/i,
+        namePattern: /himacs|hi-macs/i,
+        product_type: 'solid_surface',
+        usage_types: ['bench_tops'],
+        thickness: '12mm',
+      },
+      'formica': {
+        urlPattern: /formica/i,
+        namePattern: /formica/i,
+        product_type: 'laminate',
+        usage_types: ['doors', 'panels', 'bench_tops'],
+      },
+      'laminex-laminate': {
+        urlPattern: /high-pressure-laminate|compact-laminate|hpl/i,
+        product_type: 'laminate',
+        usage_types: ['doors', 'panels'],
+      },
+      'laminex-board': {
+        urlPattern: /particleboard|mdf|decorated|melamine/i,
+        product_type: 'board',
+        usage_types: ['doors', 'panels'],
+      },
+      'fusion': {
+        urlPattern: /fusion/i,
+        namePattern: /fusion/i,
+        product_type: 'board',
+        usage_types: ['doors', 'panels'],
+      },
+    },
+    requiredNamePatterns: [/colour|decor|woodgrain|mineral|solid|white|grey|oak|walnut|charcoal|marble|stone|aurora|polar|sandstone|natural/i],
+    excludeNamePatterns: [/sustainability|blog|news|location|brochure|article|maintenance|system/i],
   },
   'essastone': {
     mapFromRoot: true,
