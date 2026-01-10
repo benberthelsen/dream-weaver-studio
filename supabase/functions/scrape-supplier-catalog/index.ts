@@ -192,15 +192,17 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeNamePatterns: [/showroom|samples|brochure|download|pdf/i],
   },
   'laminex': {
-    // Target range pages that show individual colour swatches
+    // PRIORITY: Individual product pages with finish in URL for capturing all finish variations
     productUrlPatterns: [
-      /\/browse\/brands\?categoryCode=range/i,  // Range pages with colour swatches (AbsoluteMatte, AbsoluteGrain, etc.)
-      /categoryCode=range.*allCategories/i,  // Range query URLs
+      // Individual product pages with finish - HIGHEST PRIORITY
       /\/products\/[^/]+\/[^/]+\/p\/[A-Z]{2}\d+/i,  // /products/{name}/{finish}/p/{code}
       /\/p\/AU\d+/i,  // Any product page with AU code
       /\/p\/NZ\d+/i,  // NZ product codes
-      /\/products\/.*\/colours/,  // Colours pages
-      /\/colour-texture\//,  // Colour texture category pages
+      // Browse pages - used as fallback to discover product links
+      /\/browse\/brands\?categoryCode=range/i,
+      /categoryCode=range.*allCategories/i,
+      /\/products\/.*\/colours/,
+      /\/colour-texture\//,
       /\/decorative-surfaces/,
       /\/colours\//,
       /\/benchtops\//,
@@ -224,9 +226,9 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\/news\//,
       /\/blog\//,
     ],
-    mapFromRoot: true,  // Map from root to find all products
+    mapFromRoot: true,
     skipAuFilter: true,
-    // Seed URLs for each brand section AND their range pages
+    // Seed URLs for browsing - we scrape these to find individual product page links
     seedUrls: [
       '/browse/brands/laminex',
       '/browse/brands/formica',
@@ -234,11 +236,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       '/browse/brands/fusion',
       '/browse/brands/surround-by-laminex',
       '/browse/brands/trade-essentials',
-      // AbsoluteMatte, AbsoluteGrain, AbsoluteGloss range pages
+      // Range-specific browse pages
       '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEMATTE',
       '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEGRAIN',
       '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEGLOSS',
-      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEMATTPAN',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_NATURAL',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_NUANCE',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_SILK',
       '/products/decorative-surfaces',
       '/products/benchtops',
     ],
@@ -1819,7 +1823,7 @@ function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string
     'favourites', 'favorites', 'wishlist', 'compare'
   ];
   
-  return urls.filter(url => {
+  let productUrls = urls.filter(url => {
     const lowerUrl = url.toLowerCase();
     
     // Check Australian requirement (skip if supplier config says to)
@@ -1861,6 +1865,22 @@ function filterProductUrls(urls: string[], baseUrl: string, supplierSlug: string
     
     return false;
   });
+  
+  // For Laminex: sort to prioritize individual product pages with /p/AU or /p/NZ first
+  // These pages have the finish in the URL, which is critical for capturing finish variations
+  if (supplierSlug === 'laminex') {
+    productUrls.sort((a: string, b: string) => {
+      const aIsProductPage = /\/p\/[A-Z]{2}\d+/i.test(a);
+      const bIsProductPage = /\/p\/[A-Z]{2}\d+/i.test(b);
+      if (aIsProductPage && !bIsProductPage) return -1;
+      if (!aIsProductPage && bIsProductPage) return 1;
+      return 0;
+    });
+    const productPageCount = productUrls.filter((u: string) => /\/p\/[A-Z]{2}\d+/i.test(u)).length;
+    console.log(`Laminex URLs sorted: ${productPageCount} individual product pages prioritized`);
+  }
+  
+  return productUrls;
 }
 
 // Crawl fallback when map returns no results
