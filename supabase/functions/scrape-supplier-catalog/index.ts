@@ -144,12 +144,15 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
     excludeNamePatterns: [/showroom|samples|brochure|download|pdf/i],
   },
   'laminex': {
-    // Target actual product pages with /p/ pattern (individual products)
+    // Target range pages that show individual colour swatches
     productUrlPatterns: [
+      /\/browse\/brands\?categoryCode=range/i,  // Range pages with colour swatches (AbsoluteMatte, AbsoluteGrain, etc.)
+      /categoryCode=range.*allCategories/i,  // Range query URLs
       /\/products\/[^/]+\/[^/]+\/p\/[A-Z]{2}\d+/i,  // /products/{name}/{finish}/p/{code}
       /\/p\/AU\d+/i,  // Any product page with AU code
       /\/p\/NZ\d+/i,  // NZ product codes
       /\/products\/.*\/colours/,  // Colours pages
+      /\/colour-texture\//,  // Colour texture category pages
       /\/decorative-surfaces/,
       /\/colours\//,
       /\/benchtops\//,
@@ -169,10 +172,13 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       /\.pdf$/,
       /\.xml$/,
       /system-maintenance/,
+      /\/article\//,
+      /\/news\//,
+      /\/blog\//,
     ],
     mapFromRoot: true,  // Map from root to find all products
     skipAuFilter: true,
-    // Seed URLs for each brand section
+    // Seed URLs for each brand section AND their range pages
     seedUrls: [
       '/browse/brands/laminex',
       '/browse/brands/formica',
@@ -180,6 +186,11 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
       '/browse/brands/fusion',
       '/browse/brands/surround-by-laminex',
       '/browse/brands/trade-essentials',
+      // AbsoluteMatte, AbsoluteGrain, AbsoluteGloss range pages
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEMATTE',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEGRAIN',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEGLOSS',
+      '/browse/brands?categoryCode=range&q=%3arelevance%3aallCategories%3aB_LX%3aallCategories%3aR_ABSOLUTEMATTPAN',
       '/products/decorative-surfaces',
       '/products/benchtops',
     ],
@@ -214,9 +225,30 @@ const SUPPLIER_CONFIGS: Record<string, SupplierConfig> = {
         product_type: 'board',
         usage_types: ['doors', 'panels'],
       },
+      'absolutematte': {
+        urlPattern: /absolutematte|absolute.matte/i,
+        namePattern: /absolutematte|absolute\s*matte/i,
+        product_type: 'laminate',
+        usage_types: ['doors', 'panels'],
+      },
+      'absolutegrain': {
+        urlPattern: /absolutegrain|absolute.grain/i,
+        namePattern: /absolutegrain|absolute\s*grain/i,
+        product_type: 'laminate',
+        usage_types: ['doors', 'panels'],
+      },
+      'absolutegloss': {
+        urlPattern: /absolutegloss|absolute.gloss/i,
+        namePattern: /absolutegloss|absolute\s*gloss/i,
+        product_type: 'laminate',
+        usage_types: ['doors', 'panels'],
+      },
     },
-    requiredNamePatterns: [/colour|decor|woodgrain|mineral|solid|white|grey|oak|walnut|charcoal|marble|stone|aurora|polar|sandstone|natural/i],
-    excludeNamePatterns: [/sustainability|blog|news|location|brochure|article|maintenance|system/i],
+    requiredNamePatterns: [
+      /colour|decor|woodgrain|mineral|solid|white|grey|gray|oak|walnut|charcoal|marble|stone|aurora|polar|sandstone|natural/i,
+      /absolute|matte|grain|gloss|timber|veneer|metallic|concrete|terrazzo/i,
+    ],
+    excludeNamePatterns: [/sustainability|blog|news|location|brochure|article|maintenance|system|showroom|samples/i],
   },
   'essastone': {
     mapFromRoot: true,
