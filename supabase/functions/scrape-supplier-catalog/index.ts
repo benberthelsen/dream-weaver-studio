@@ -2455,7 +2455,14 @@ async function runScrapingTask(
       }
     }
 
-    const defaultMaxPages = supplierSlug === 'hafele' ? 500 : 50;
+    // Supplier-specific page limits
+    const SUPPLIER_PAGE_LIMITS: Record<string, number> = {
+      'hafele': 500,
+      'laminex': 200,  // Laminex has many product ranges
+      'forestone': 150,
+      'polytec': 150,
+    };
+    const defaultMaxPages = SUPPLIER_PAGE_LIMITS[supplierSlug] || 50;
     const maxPages = options?.maxPages || defaultMaxPages;
     const urlsToScrape = productUrls.slice(0, maxPages);
     
