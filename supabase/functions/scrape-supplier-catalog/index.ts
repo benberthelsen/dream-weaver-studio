@@ -2168,6 +2168,9 @@ async function handleWorkMode(
   
   const urlsRemaining = remainingUrls?.length || 0;
   
+  // Update job stats and mark as completed if no URLs remain
+  const isComplete = urlsRemaining === 0;
+  
   await supabase
     .from('scrape_jobs')
     .update({
@@ -2175,14 +2178,17 @@ async function handleWorkMode(
       pages_failed: (job.pages_failed || 0) + batchFailed,
       products_inserted: (job.products_inserted || 0) + batchInserted,
       urls_completed: (job.urls_completed || 0) + batchProcessed + batchFailed,
+      ...(isComplete ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
     })
     .eq('id', jobId);
+  
+  console.log(`[WORK] Batch complete: ${batchProcessed} processed, ${batchFailed} failed, ${batchInserted} inserted, ${urlsRemaining} remaining${isComplete ? ' - JOB COMPLETED' : ''}`);
   
   return new Response(
     JSON.stringify({
       success: true,
       jobId,
-      status: urlsRemaining > 0 ? 'in_progress' : 'completed',
+      status: isComplete ? 'completed' : 'in_progress',
       batchProcessed,
       batchFailed,
       batchInserted,
