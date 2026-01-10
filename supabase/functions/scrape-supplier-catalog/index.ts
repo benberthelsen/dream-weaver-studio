@@ -2734,7 +2734,220 @@ Deno.serve(async (req) => {
     // WORK MODE: Process next batch of URLs from existing job (synchronous)
     // =========================================================================
     if (mode === 'work') {
+      // Set job status to 'scraping' if not already terminal
+      const { data: currentJob } = await supabase
+        .from('scrape_jobs')
+        .select('status')
+        .eq('id', existingJobId)
+        .single();
+      
+      if (currentJob && !['completed', 'failed', 'cancelled'].includes(currentJob.status)) {
+        await supabase
+          .from('scrape_jobs')
+          .update({ status: 'scraping' })
+          .eq('id', existingJobId);
+      }
+      
       return await handleWorkMode(supabase, existingJobId, batchSize, supplier, supplierSlug, config, firecrawlKey);
+    }
+
+    // =========================================================================
+    // PLAN MODE: Map URLs, filter, queue in scrape_job_urls, return immediately
+    // =========================================================================
+    if (mode === 'plan') {
+      console.log(`PLAN MODE: Creating job and queuing URLs for ${supplier.name}`);
+      
+      // Cleanup old products first (synchronous)
+      let deletedCount = 0;
+      if (!skipCleanup) {
+        deletedCount = await cleanupOldProducts(supabase, supplierId, supplier.name);
+      }
+
+      // Create scrape job
+      const { data: job, error: jobError } = await supabase
+        .from('scrape_jobs')
+        .insert({
+          supplier_id: supplierId,
+          status: 'mapping',
+          mode: 'plan',
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (jobError || !job) {
+        console.error('Failed to create job:', jobError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to create scrape job' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const jobId = job.id;
+      console.log(`Created plan job ${jobId} for ${supplier.name}`);
+
+      try {
+        // Parse base URL
+        let baseUrl: string;
+        try {
+          const urlObj = new URL(url);
+          baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+        } catch {
+          baseUrl = url;
+        }
+
+        // Determine URL to map
+        let urlToMap = url;
+        if (config.mapFromRoot && config.rootDomain) {
+          urlToMap = config.rootDomain;
+          console.log(`Using root domain for mapping: ${urlToMap}`);
+        }
+
+        const isAustraliaSite = isAustralianUrl(url) || config.skipAuFilter === true;
+
+        // Step 1: Map the website
+        let allUrls: string[] = [];
+        
+        try {
+          const mapResponse = await fetchWithRetry('https://api.firecrawl.dev/v1/map', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: urlToMap,
+              limit: options?.mapLimit || 3000,
+              includeSubdomains: false,
+            }),
+          });
+
+          const mapData = await mapResponse.json();
+          
+          if (mapResponse.ok && mapData.links && mapData.links.length > 0) {
+            allUrls = mapData.links;
+            console.log(`[PLAN] Found ${allUrls.length} total URLs on website`);
+          } else {
+            console.log('[PLAN] Map failed or returned no URLs, trying fallbacks');
+            
+            if (config.useCrawlFallback) {
+              allUrls = await crawlFallback(url, firecrawlKey, 50);
+            }
+            if (allUrls.length === 0) {
+              allUrls = await linkScrapeFallback(url, firecrawlKey, baseUrl);
+            }
+            if (allUrls.length === 0) {
+              allUrls = [url];
+            }
+          }
+        } catch (error) {
+          console.error('[PLAN] Map request failed:', error);
+          
+          if (config.useCrawlFallback) {
+            allUrls = await crawlFallback(url, firecrawlKey, 50);
+          }
+          if (allUrls.length === 0) {
+            allUrls = [url];
+          }
+        }
+
+        await supabase
+          .from('scrape_jobs')
+          .update({ urls_mapped: allUrls.length })
+          .eq('id', jobId);
+
+        // Step 2: Filter to product URLs
+        let productUrls = filterProductUrls(allUrls, baseUrl, supplierSlug, !isAustraliaSite);
+        console.log(`[PLAN] Filtered to ${productUrls.length} product URLs`);
+
+        // Add seed URLs if configured and we have few results
+        if (config.seedUrls && config.seedUrls.length > 0 && productUrls.length < 10) {
+          const seedAbsoluteUrls = config.seedUrls.map(p => p.startsWith('http') ? p : baseUrl + p);
+          for (const seedUrl of seedAbsoluteUrls) {
+            if (!productUrls.includes(seedUrl)) {
+              productUrls.push(seedUrl);
+            }
+          }
+          console.log(`[PLAN] Added seed URLs, now have ${productUrls.length} URLs`);
+        }
+
+        // Apply max pages limit
+        const maxPages = options?.maxPages || 50;
+        if (productUrls.length > maxPages) {
+          productUrls = productUrls.slice(0, maxPages);
+          console.log(`[PLAN] Limited to ${maxPages} pages`);
+        }
+
+        // Step 3: Insert URLs into scrape_job_urls table
+        if (productUrls.length > 0) {
+          const urlRecords = productUrls.map(u => ({
+            job_id: jobId,
+            url: u,
+            status: 'pending',
+          }));
+
+          // Insert in batches of 100
+          for (let i = 0; i < urlRecords.length; i += 100) {
+            const batch = urlRecords.slice(i, i + 100);
+            const { error: insertError } = await supabase
+              .from('scrape_job_urls')
+              .insert(batch);
+            
+            if (insertError) {
+              console.error('[PLAN] Error inserting URL batch:', insertError);
+            }
+          }
+        }
+
+        // Step 4: Update job status to 'planned'
+        await supabase
+          .from('scrape_jobs')
+          .update({
+            status: 'planned',
+            urls_to_scrape: productUrls.length,
+            urls_queued: productUrls.length,
+            urls_completed: 0,
+            products_found: 0,
+            products_inserted: 0,
+            pages_scraped: 0,
+            pages_failed: 0,
+            current_url: null,
+          })
+          .eq('id', jobId);
+
+        console.log(`[PLAN] Job ${jobId} planned with ${productUrls.length} URLs queued`);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            jobId: jobId,
+            mode: 'plan',
+            supplier: supplier.name,
+            urlsMapped: allUrls.length,
+            urlsQueued: productUrls.length,
+            oldProductsDeleted: deletedCount,
+            message: `Planned ${productUrls.length} URLs. Call with mode='work' to process.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+
+      } catch (error) {
+        console.error('[PLAN] Error during planning:', error);
+        
+        await supabase
+          .from('scrape_jobs')
+          .update({
+            status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Planning failed',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', jobId);
+
+        return new Response(
+          JSON.stringify({ success: false, error: 'Planning failed', jobId }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // =========================================================================
