@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   useSuppliersWithCounts, 
   useScrapeSupplierCatalog,
@@ -210,6 +210,8 @@ interface BulkImportState {
 
 function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: suppliers } = useSuppliersWithCounts();
+  const suppliersWithUrls = suppliers?.filter(s => s.website_url) || [];
+
   const [state, setState] = useState<BulkImportState>({
     isRunning: false,
     currentSupplierIndex: 0,
@@ -220,21 +222,98 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   });
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
+  // Keep the latest completed count for timeouts / async flows
+  const completedCountRef = useRef(0);
+  useEffect(() => {
+    completedCountRef.current = state.completedSuppliers.length;
+  }, [state.completedSuppliers.length]);
+
+  async function processSupplierAtIndex(index: number) {
+    if (index >= suppliersWithUrls.length) {
+      setState(prev => ({ ...prev, isRunning: false }));
+      toast.success(`Bulk import complete! Processed ${suppliersWithUrls.length} suppliers.`);
+      return;
+    }
+
+    const supplier = suppliersWithUrls[index];
+
+    setState(prev => ({
+      ...prev,
+      currentSupplierIndex: index,
+      totalSuppliers: suppliersWithUrls.length,
+      currentSupplierName: supplier.name,
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+        body: {
+          supplierId: supplier.id,
+          url: supplier.website_url,
+          options: { maxPages: 30 },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.jobId) {
+        setActiveJobId(data.jobId);
+        return;
+      }
+
+      // No job ID (synchronous run) — record and continue
+      setState(prev => ({
+        ...prev,
+        completedSuppliers: [
+          ...prev.completedSuppliers,
+          {
+            name: supplier.name,
+            products: data?.stats?.productsInserted || 0,
+            success: true,
+          },
+        ],
+      }));
+
+      setTimeout(() => processSupplierAtIndex(index + 1), 500);
+    } catch (error) {
+      console.error(`Failed to scrape ${supplier.name}:`, error);
+
+      setState(prev => ({
+        ...prev,
+        completedSuppliers: [
+          ...prev.completedSuppliers,
+          {
+            name: supplier.name,
+            products: 0,
+            success: false,
+          },
+        ],
+      }));
+
+      setTimeout(() => processSupplierAtIndex(index + 1), 500);
+    }
+  }
+
   // Subscribe to job updates
   useEffect(() => {
     if (!activeJobId) return;
 
     const fetchJob = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("scrape_jobs")
         .select("*")
         .eq("id", activeJobId)
-        .single();
-      
+        .maybeSingle();
+
+      if (error) {
+        console.error("Failed to fetch scrape job:", error);
+        return;
+      }
+
       if (data) {
         setState(prev => ({ ...prev, currentJob: data as ScrapeJob }));
       }
     };
+
     fetchJob();
 
     const channel = supabase
@@ -265,12 +344,13 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     if (!state.isRunning || !state.currentJob) return;
 
     if (state.currentJob.status === 'completed' || state.currentJob.status === 'failed') {
-      // Record result
       const result = {
         name: state.currentSupplierName,
         products: state.currentJob.products_inserted || 0,
         success: state.currentJob.status === 'completed',
       };
+
+      const nextIndex = completedCountRef.current + 1;
 
       setState(prev => ({
         ...prev,
@@ -280,71 +360,11 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
       setActiveJobId(null);
 
-      // Process next supplier after a short delay
       setTimeout(() => {
-        processNextSupplier();
+        processSupplierAtIndex(nextIndex);
       }, 1000);
     }
-  }, [state.currentJob?.status]);
-
-  const suppliersWithUrls = suppliers?.filter(s => s.website_url) || [];
-
-  const processNextSupplier = async () => {
-    const nextIndex = state.completedSuppliers.length;
-    
-    if (nextIndex >= suppliersWithUrls.length) {
-      // All done
-      setState(prev => ({ ...prev, isRunning: false }));
-      toast.success(`Bulk import complete! Processed ${suppliersWithUrls.length} suppliers.`);
-      return;
-    }
-
-    const supplier = suppliersWithUrls[nextIndex];
-    
-    setState(prev => ({
-      ...prev,
-      currentSupplierIndex: nextIndex,
-      currentSupplierName: supplier.name,
-    }));
-
-    try {
-      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
-        body: { 
-          supplierId: supplier.id, 
-          url: supplier.website_url,
-          options: { maxPages: 30 }
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.jobId) {
-        setActiveJobId(data.jobId);
-      } else {
-        // No job ID, record as complete
-        setState(prev => ({
-          ...prev,
-          completedSuppliers: [...prev.completedSuppliers, {
-            name: supplier.name,
-            products: data.stats?.productsInserted || 0,
-            success: true,
-          }],
-        }));
-        setTimeout(() => processNextSupplier(), 500);
-      }
-    } catch (error) {
-      console.error(`Failed to scrape ${supplier.name}:`, error);
-      setState(prev => ({
-        ...prev,
-        completedSuppliers: [...prev.completedSuppliers, {
-          name: supplier.name,
-          products: 0,
-          success: false,
-        }],
-      }));
-      setTimeout(() => processNextSupplier(), 500);
-    }
-  };
+  }, [state.currentJob?.status, state.isRunning, state.currentSupplierName]);
 
   const startBulkImport = () => {
     setState({
@@ -355,8 +375,11 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       completedSuppliers: [],
       currentJob: null,
     });
-    processNextSupplier();
+
+    completedCountRef.current = 0;
+    processSupplierAtIndex(0);
   };
+
 
   const handleClose = () => {
     if (!state.isRunning) {
