@@ -204,9 +204,14 @@ interface BulkImportState {
   currentSupplierIndex: number;
   totalSuppliers: number;
   currentSupplierName: string;
-  completedSuppliers: { name: string; products: number; success: boolean }[];
+  completedSuppliers: { name: string; products: number; success: boolean; skipped?: boolean }[];
   currentJob: ScrapeJob | null;
+  phase: 'idle' | 'planning' | 'working' | 'done';
 }
+
+const STALL_TIMEOUT_MS = 120000; // 2 minutes with no progress = skip
+const WORK_BATCH_SIZE = 5;
+const WORK_DELAY_MS = 1000;
 
 function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: suppliers } = useSuppliersWithCounts();
@@ -219,152 +224,208 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     currentSupplierName: '',
     completedSuppliers: [],
     currentJob: null,
+    phase: 'idle',
   });
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
-  // Keep the latest completed count for timeouts / async flows
-  const completedCountRef = useRef(0);
+  // Refs to track progress for stall detection
+  const lastProgressRef = useRef<{ urlsCompleted: number; timestamp: number } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isStoppedRef = useRef(false);
+
+  // Cleanup on unmount
   useEffect(() => {
-    completedCountRef.current = state.completedSuppliers.length;
-  }, [state.completedSuppliers.length]);
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
-  async function processSupplierAtIndex(index: number) {
-    if (index >= suppliersWithUrls.length) {
-      setState(prev => ({ ...prev, isRunning: false }));
-      toast.success(`Bulk import complete! Processed ${suppliersWithUrls.length} suppliers.`);
-      return;
-    }
-
-    const supplier = suppliersWithUrls[index];
-
-    setState(prev => ({
-      ...prev,
-      currentSupplierIndex: index,
-      totalSuppliers: suppliersWithUrls.length,
-      currentSupplierName: supplier.name,
-    }));
-
+  // Process a single supplier using plan/work pipeline
+  async function processSupplier(supplier: SupplierWithCount, signal: AbortSignal): Promise<{ products: number; success: boolean; skipped?: boolean }> {
+    console.log(`[BulkImport] Processing ${supplier.name}...`);
+    
+    // Phase 1: Plan
+    setState(prev => ({ ...prev, phase: 'planning', currentJob: null }));
+    
+    let jobId: string;
+    let urlsQueued = 0;
+    
     try {
-      const { data, error } = await supabase.functions.invoke('scrape-supplier-catalog', {
+      const planResponse = await supabase.functions.invoke('scrape-supplier-catalog', {
         body: {
           supplierId: supplier.id,
           url: supplier.website_url,
-          options: { maxPages: 30 },
+          options: { 
+            mode: 'plan',
+            maxPages: 30,
+            batchSize: WORK_BATCH_SIZE,
+          },
         },
       });
 
-      if (error) throw error;
-
-      if (data?.jobId) {
-        setActiveJobId(data.jobId);
-        return;
+      if (planResponse.error) {
+        console.error(`[BulkImport] Plan failed for ${supplier.name}:`, planResponse.error);
+        return { products: 0, success: false };
       }
 
-      // No job ID (synchronous run) — record and continue
-      setState(prev => ({
-        ...prev,
-        completedSuppliers: [
-          ...prev.completedSuppliers,
-          {
-            name: supplier.name,
-            products: data?.stats?.productsInserted || 0,
-            success: true,
-          },
-        ],
-      }));
+      jobId = planResponse.data?.jobId;
+      urlsQueued = planResponse.data?.urlsQueued || 0;
 
-      setTimeout(() => processSupplierAtIndex(index + 1), 500);
+      if (!jobId) {
+        console.error(`[BulkImport] No jobId returned for ${supplier.name}`);
+        return { products: 0, success: false };
+      }
+
+      console.log(`[BulkImport] Planned ${urlsQueued} URLs for ${supplier.name} (job: ${jobId})`);
+
+      if (urlsQueued === 0) {
+        // No URLs to scrape, mark as done
+        return { products: 0, success: true };
+      }
+
     } catch (error) {
-      console.error(`Failed to scrape ${supplier.name}:`, error);
-
-      setState(prev => ({
-        ...prev,
-        completedSuppliers: [
-          ...prev.completedSuppliers,
-          {
-            name: supplier.name,
-            products: 0,
-            success: false,
-          },
-        ],
-      }));
-
-      setTimeout(() => processSupplierAtIndex(index + 1), 500);
+      console.error(`[BulkImport] Plan error for ${supplier.name}:`, error);
+      return { products: 0, success: false };
     }
+
+    // Phase 2: Work loop
+    setState(prev => ({ ...prev, phase: 'working' }));
+    lastProgressRef.current = { urlsCompleted: 0, timestamp: Date.now() };
+
+    let totalInserted = 0;
+    let urlsRemaining = urlsQueued;
+    let consecutiveEmptyBatches = 0;
+
+    while (urlsRemaining > 0 && !signal.aborted) {
+      // Check for stall
+      const now = Date.now();
+      if (lastProgressRef.current) {
+        const elapsed = now - lastProgressRef.current.timestamp;
+        if (elapsed > STALL_TIMEOUT_MS) {
+          console.warn(`[BulkImport] Stall detected for ${supplier.name} after ${elapsed}ms, skipping`);
+          toast.warning(`Skipped ${supplier.name} due to stall (no progress for 2 min)`);
+          return { products: totalInserted, success: false, skipped: true };
+        }
+      }
+
+      try {
+        const workResponse = await supabase.functions.invoke('scrape-supplier-catalog', {
+          body: {
+            supplierId: supplier.id,
+            options: {
+              mode: 'work',
+              jobId: jobId,
+              batchSize: WORK_BATCH_SIZE,
+            },
+          },
+        });
+
+        if (workResponse.error) {
+          console.error(`[BulkImport] Work error for ${supplier.name}:`, workResponse.error);
+          consecutiveEmptyBatches++;
+          if (consecutiveEmptyBatches >= 3) {
+            console.warn(`[BulkImport] Too many work errors for ${supplier.name}, stopping`);
+            break;
+          }
+          await new Promise(r => setTimeout(r, WORK_DELAY_MS));
+          continue;
+        }
+
+        const { batchProcessed, batchInserted, urlsRemaining: remaining, status } = workResponse.data || {};
+        
+        urlsRemaining = remaining ?? 0;
+        totalInserted += batchInserted || 0;
+
+        // Update progress tracking
+        const currentUrlsCompleted = (urlsQueued - urlsRemaining);
+        if (lastProgressRef.current && currentUrlsCompleted > lastProgressRef.current.urlsCompleted) {
+          lastProgressRef.current = { urlsCompleted: currentUrlsCompleted, timestamp: Date.now() };
+          consecutiveEmptyBatches = 0;
+        } else if (batchProcessed === 0) {
+          consecutiveEmptyBatches++;
+        }
+
+        // Update UI with job progress
+        const { data: jobData } = await supabase
+          .from('scrape_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .maybeSingle();
+        
+        if (jobData) {
+          setState(prev => ({ ...prev, currentJob: jobData as ScrapeJob }));
+        }
+
+        // Check if completed
+        if (status === 'completed' || urlsRemaining === 0) {
+          console.log(`[BulkImport] ${supplier.name} completed with ${totalInserted} products`);
+          break;
+        }
+
+        // Safety: too many empty batches
+        if (consecutiveEmptyBatches >= 5) {
+          console.warn(`[BulkImport] Too many empty batches for ${supplier.name}, stopping`);
+          break;
+        }
+
+        await new Promise(r => setTimeout(r, WORK_DELAY_MS));
+
+      } catch (error) {
+        console.error(`[BulkImport] Work loop error for ${supplier.name}:`, error);
+        consecutiveEmptyBatches++;
+        if (consecutiveEmptyBatches >= 3) break;
+        await new Promise(r => setTimeout(r, WORK_DELAY_MS));
+      }
+    }
+
+    return { products: totalInserted, success: !signal.aborted };
   }
 
-  // Subscribe to job updates
-  useEffect(() => {
-    if (!activeJobId) return;
+  async function runBulkImport() {
+    isStoppedRef.current = false;
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
-    const fetchJob = async () => {
-      const { data, error } = await supabase
-        .from("scrape_jobs")
-        .select("*")
-        .eq("id", activeJobId)
-        .maybeSingle();
+    for (let i = 0; i < suppliersWithUrls.length; i++) {
+      if (signal.aborted || isStoppedRef.current) break;
 
-      if (error) {
-        console.error("Failed to fetch scrape job:", error);
-        return;
-      }
+      const supplier = suppliersWithUrls[i];
+      
+      setState(prev => ({
+        ...prev,
+        currentSupplierIndex: i,
+        currentSupplierName: supplier.name,
+        currentJob: null,
+        phase: 'planning',
+      }));
 
-      if (data) {
-        setState(prev => ({ ...prev, currentJob: data as ScrapeJob }));
-      }
-    };
-
-    fetchJob();
-
-    const channel = supabase
-      .channel(`bulk-scrape-job-${activeJobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'scrape_jobs',
-          filter: `id=eq.${activeJobId}`,
-        },
-        (payload) => {
-          if (payload.new) {
-            setState(prev => ({ ...prev, currentJob: payload.new as ScrapeJob }));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [activeJobId]);
-
-  // Process next supplier when current job completes
-  useEffect(() => {
-    if (!state.isRunning || !state.currentJob) return;
-
-    if (state.currentJob.status === 'completed' || state.currentJob.status === 'failed') {
-      const result = {
-        name: state.currentSupplierName,
-        products: state.currentJob.products_inserted || 0,
-        success: state.currentJob.status === 'completed',
-      };
-
-      const nextIndex = completedCountRef.current + 1;
+      const result = await processSupplier(supplier, signal);
 
       setState(prev => ({
         ...prev,
-        completedSuppliers: [...prev.completedSuppliers, result],
-        currentJob: null,
+        completedSuppliers: [
+          ...prev.completedSuppliers,
+          {
+            name: supplier.name,
+            products: result.products,
+            success: result.success,
+            skipped: result.skipped,
+          },
+        ],
       }));
 
-      setActiveJobId(null);
-
-      setTimeout(() => {
-        processSupplierAtIndex(nextIndex);
-      }, 1000);
+      // Brief pause before next supplier
+      if (i < suppliersWithUrls.length - 1 && !signal.aborted) {
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
-  }, [state.currentJob?.status, state.isRunning, state.currentSupplierName]);
+
+    setState(prev => ({ ...prev, isRunning: false, phase: 'done' }));
+    
+    if (!isStoppedRef.current) {
+      const successCount = suppliersWithUrls.length;
+      toast.success(`Bulk import complete! Processed ${successCount} suppliers.`);
+    }
+  }
 
   const startBulkImport = () => {
     setState({
@@ -374,12 +435,18 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       currentSupplierName: '',
       completedSuppliers: [],
       currentJob: null,
+      phase: 'idle',
     });
 
-    completedCountRef.current = 0;
-    processSupplierAtIndex(0);
+    runBulkImport();
   };
 
+  const stopBulkImport = () => {
+    isStoppedRef.current = true;
+    abortControllerRef.current?.abort();
+    setState(prev => ({ ...prev, isRunning: false, phase: 'done' }));
+    toast.info('Bulk import stopped.');
+  };
 
   const handleClose = () => {
     if (!state.isRunning) {
@@ -390,6 +457,7 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         currentSupplierName: '',
         completedSuppliers: [],
         currentJob: null,
+        phase: 'idle',
       });
       onOpenChange(false);
     }
@@ -401,6 +469,23 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   const isComplete = state.completedSuppliers.length === suppliersWithUrls.length && !state.isRunning;
   const totalProducts = state.completedSuppliers.reduce((sum, s) => sum + s.products, 0);
+
+  const getPhaseLabel = () => {
+    if (!state.currentJob) {
+      if (state.phase === 'planning') return '🔍 Planning...';
+      if (state.phase === 'working') return '⏳ Starting...';
+      return '⏳ Starting...';
+    }
+    const status = state.currentJob.status;
+    if (status === 'mapping' || state.phase === 'planning') return '🔍 Mapping URLs...';
+    if (status === 'planned') return '📋 Planned';
+    if (status === 'scraping' || state.phase === 'working') {
+      const completed = state.currentJob.urls_completed || 0;
+      const total = state.currentJob.urls_queued || state.currentJob.urls_to_scrape || 0;
+      return `📄 Scraping ${completed}/${total}`;
+    }
+    return '⏳ Processing...';
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -449,10 +534,7 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">{state.currentSupplierName}</span>
                   <Badge variant="secondary">
-                    {state.currentJob?.status === 'mapping' && '🔍 Mapping...'}
-                    {state.currentJob?.status === 'scraping' && '📄 Scraping...'}
-                    {state.currentJob?.status === 'inserting' && '💾 Saving...'}
-                    {!state.currentJob && '⏳ Starting...'}
+                    {getPhaseLabel()}
                   </Badge>
                 </div>
                 {state.currentJob && (
@@ -472,12 +554,15 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               {state.completedSuppliers.map((s, i) => (
                 <div key={i} className="flex items-center justify-between text-sm px-2 py-1.5 rounded bg-muted/30">
                   <div className="flex items-center gap-2">
-                    {s.success ? (
+                    {s.skipped ? (
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                    ) : s.success ? (
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                     ) : (
                       <XCircle className="h-4 w-4 text-destructive" />
                     )}
                     <span>{s.name}</span>
+                    {s.skipped && <span className="text-xs text-amber-500">(skipped)</span>}
                   </div>
                   <span className="text-muted-foreground">{s.products} products</span>
                 </div>
@@ -508,6 +593,12 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                 Start Import ({suppliersWithUrls.length} suppliers)
               </Button>
             </>
+          )}
+          {state.isRunning && (
+            <Button variant="destructive" onClick={stopBulkImport} className="w-full">
+              <Square className="h-4 w-4 mr-2" />
+              Stop Import
+            </Button>
           )}
           {isComplete && (
             <Button onClick={handleClose} className="w-full">
