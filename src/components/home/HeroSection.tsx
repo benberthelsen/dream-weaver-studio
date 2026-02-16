@@ -4,9 +4,9 @@ import { ArrowRight } from "lucide-react";
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-foreground text-primary-foreground">
+    <section className="relative overflow-hidden bg-background text-foreground">
       {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground via-foreground/95 to-primary/30" />
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background/95 to-primary/10" />
       
       <div className="relative container mx-auto px-4 py-24 md:py-36 lg:py-44">
         <div className="max-w-2xl space-y-6">
@@ -16,7 +16,7 @@ export function HeroSection() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
             Custom Flat‑Pack Cabinets, Delivered to Your Door
           </h1>
-          <p className="text-lg text-primary-foreground/70 max-w-xl leading-relaxed">
+          <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
             Design your dream kitchen, laundry or bathroom online. We cut, drill and edge every panel to your exact specs — you assemble and save thousands.
           </p>
           <div className="flex flex-wrap gap-4 pt-2">
@@ -26,7 +26,7 @@ export function HeroSection() {
               </Button>
             </Link>
             <Link to="/pricing">
-              <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-white/10 font-semibold text-base px-8">
+              <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-secondary font-semibold text-base px-8">
                 See Example Pricing
               </Button>
             </Link>
