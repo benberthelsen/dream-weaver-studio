@@ -25,7 +25,7 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-foreground text-primary-foreground">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-card text-foreground">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-3">
           <div className="w-9 h-9 rounded bg-primary flex items-center justify-center">
@@ -42,8 +42,8 @@ export function SiteHeader() {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "text-xs font-semibold tracking-wider text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10",
-                  isActive(link.path) && "text-primary-foreground bg-white/10"
+                  "text-xs font-semibold tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary",
+                  isActive(link.path) && "text-primary bg-secondary"
                 )}
               >
                 {link.label}
@@ -54,7 +54,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Link to="/board" className="hidden sm:block">
-            <Button variant="outline" size="sm" className="text-xs border-primary-foreground/30 text-primary-foreground hover:bg-white/10">
+            <Button variant="outline" size="sm" className="text-xs border-primary/50 text-primary hover:bg-primary/10">
               PRO TOOLS
             </Button>
           </Link>
@@ -62,19 +62,19 @@ export function SiteHeader() {
           {/* Mobile menu */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon" className="text-primary-foreground">
+              <Button variant="ghost" size="icon" className="text-foreground">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="bg-foreground text-primary-foreground border-border/20 w-64">
+            <SheetContent side="right" className="bg-card text-foreground border-border w-64">
               <nav className="flex flex-col gap-1 mt-8">
                 {navLinks.map((link) => (
                   <Link key={link.path} to={link.path} onClick={() => setOpen(false)}>
                     <Button
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start text-sm font-semibold tracking-wider text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10",
-                        isActive(link.path) && "text-primary-foreground bg-white/10"
+                        "w-full justify-start text-sm font-semibold tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary",
+                        isActive(link.path) && "text-primary bg-secondary"
                       )}
                     >
                       {link.label}
@@ -82,7 +82,7 @@ export function SiteHeader() {
                   </Link>
                 ))}
                 <Link to="/board" onClick={() => setOpen(false)}>
-                  <Button variant="outline" className="w-full mt-4 border-primary-foreground/30 text-primary-foreground hover:bg-white/10">
+                  <Button variant="outline" className="w-full mt-4 border-primary/50 text-primary hover:bg-primary/10">
                     PRO TOOLS
                   </Button>
                 </Link>
