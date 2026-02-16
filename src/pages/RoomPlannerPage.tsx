@@ -1,7 +1,7 @@
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowRight, Monitor, Ruler, Palette, ShoppingCart } from "lucide-react";
+import { ArrowRight, Monitor, Ruler, Palette, ShoppingCart, Phone, Mail } from "lucide-react";
 
 const features = [
   {
@@ -16,8 +16,8 @@ const features = [
   },
   {
     icon: Palette,
-    title: "500+ Colours & Finishes",
-    description: "Browse materials from Laminex, Polytec and more. Mix and match doors, panels and benchtops.",
+    title: "Choose Your Finishes",
+    description: "Browse materials from leading brands. Mix and match doors, panels and benchtops.",
   },
   {
     icon: ShoppingCart,
@@ -39,12 +39,11 @@ const RoomPlannerPage = () => {
             Design Your Space in 3D
           </h1>
           <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-            Our online room planner lets you design custom cabinetry for your kitchen, laundry, bathroom or wardrobe — 
-            with real-time pricing and hundreds of material options.
+            Use our online room planner/ordering portal to design your cabinets and view an instant quote.
           </p>
           <Button size="lg" className="font-semibold text-base px-8" asChild>
-            <a href="https://cabinetry.online" target="_blank" rel="noopener noreferrer">
-              Launch Room Planner <ArrowRight className="ml-2 h-5 w-5" />
+            <a href="https://bower.cabinetry.online/" target="_blank" rel="noopener noreferrer">
+              Open Room Planner <ArrowRight className="ml-2 h-5 w-5" />
             </a>
           </Button>
         </div>
@@ -81,6 +80,21 @@ const RoomPlannerPage = () => {
           <p className="mt-6 text-sm text-muted-foreground">
             Works on desktop, tablet and mobile. No software to install.
           </p>
+        </div>
+      </section>
+
+      {/* Support block */}
+      <section className="py-12">
+        <div className="container mx-auto px-4 text-center max-w-lg">
+          <p className="text-foreground font-semibold mb-3">Need help?</p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <a href="tel:+61437732286" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+              <Phone className="h-4 w-4" /> 0437 732 286
+            </a>
+            <a href="mailto:info@bowerbuilding.net" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+              <Mail className="h-4 w-4" /> info@bowerbuilding.net
+            </a>
+          </div>
         </div>
       </section>
     </SiteLayout>
