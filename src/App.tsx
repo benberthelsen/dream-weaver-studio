@@ -14,6 +14,7 @@ import FlatlaysPage from "./pages/FlatlaysPage";
 import CollectionsPage from "./pages/CollectionsPage";
 import BoardPage from "./pages/BoardPage";
 import AdminPage from "./pages/AdminPage";
+import PrivacyPage from "./pages/PrivacyPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/collections" element={<CollectionsPage />} />
           <Route path="/board" element={<BoardPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -4,31 +4,28 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { Check, ArrowRight } from "lucide-react";
 
-const exampleKitchens = [
-  {
-    name: "Small Galley Kitchen",
-    size: "~2.4m × 1.2m",
-    cabinets: "6 cabinets",
-    bowerPrice: "$3,200",
-    bigBoxPrice: "$5,500",
-    installerPrice: "$9,000+",
-  },
-  {
-    name: "Standard L-Shape Kitchen",
-    size: "~3.6m × 2.4m",
-    cabinets: "12 cabinets",
-    bowerPrice: "$6,800",
-    bigBoxPrice: "$9,500",
-    installerPrice: "$16,000+",
-  },
-  {
-    name: "Large U-Shape Kitchen",
-    size: "~4.8m × 3.0m",
-    cabinets: "18 cabinets",
-    bowerPrice: "$10,500",
-    bigBoxPrice: "$14,000",
-    installerPrice: "$24,000+",
-  },
+const exampleCabinets = [
+  { type: "Base cabinet (2 door)", dims: "900w × 720h × 560d", material: "White HMR", price: "$185" },
+  { type: "Overhead cabinet", dims: "900w × 720h × 300d", material: "White HMR", price: "$135" },
+  { type: "Pantry cabinet", dims: "600w × 2100h × 560d", material: "White HMR", price: "$310" },
+  { type: "Drawer base (3 drawer)", dims: "600w × 720h × 560d", material: "White HMR", price: "$245" },
+  { type: "Corner base", dims: "900w × 720h × 900d", material: "White HMR", price: "$265" },
+];
+
+const bunningsExamples = [
+  { item: "Kaboodle 900mm White Base Cabinet", price: "$199.00" },
+  { item: "Kaboodle 900mm Wall Cabinet", price: "$165.65" },
+  { item: "Kaboodle 600mm Kitchen Pantry", price: "$349.42" },
+  { item: "Kaboodle 900mm White Pantry Base Cabinet", price: "$514.76" },
+  { item: "Kaboodle 900mm White Corner Base Cabinet", price: "$247.77" },
+];
+
+const comparisonRows = [
+  { feature: "Ordering experience", bower: "Online program + portal hand‑off", box: "Modular range + planning tools" },
+  { feature: "Size flexibility", bower: "Custom‑to‑spec workflow (as designed in portal)", box: "Modular by default; cut‑to‑measure on selected items" },
+  { feature: "Quote visibility", bower: "Instant cost estimates as you design", box: "Itemised retail pricing per module" },
+  { feature: "Materials / hardware", bower: "Trade‑quality components; range shown in portal", box: "Kaboodle range (doors/colours/parts per catalogue)" },
+  { feature: "Support", bower: "We're here every step of the way", box: "DIY resources and assembly guidance" },
 ];
 
 const whatsIncluded = [
@@ -46,46 +43,97 @@ const PricingPage = () => {
       {/* Hero */}
       <section className="py-20 md:py-28">
         <div className="container mx-auto px-4 text-center max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">
-            Pricing
-          </p>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
-            Save Thousands on Custom Cabinetry
-          </h1>
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">Pricing</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">Example Cabinet Pricing</h1>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            Our prices are transparent and itemised. Here are some example kitchen costs to give you a ballpark — your exact price depends on your design.
+            See what custom flat‑pack cabinets can cost. For an exact quote, use the room planner and portal.
           </p>
         </div>
       </section>
 
-      {/* Example pricing cards */}
+      {/* Bower example pricing table */}
       <section className="pb-16">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {exampleKitchens.map((k) => (
-              <Card key={k.name} className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{k.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{k.size} · {k.cabinets}</p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-sm font-semibold text-primary">Bower Building</span>
-                      <span className="text-2xl font-bold text-primary">{k.bowerPrice}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline text-sm text-muted-foreground">
-                      <span>Big-box store</span>
-                      <span className="line-through">{k.bigBoxPrice}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline text-sm text-muted-foreground">
-                      <span>Local installer</span>
-                      <span className="line-through">{k.installerPrice}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        <div className="container mx-auto px-4 max-w-4xl">
+          <h2 className="text-2xl font-bold text-foreground mb-6">Bower Building — Indicative Pricing</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Cabinet Type</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Example Dimensions</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Material</th>
+                  <th className="text-right py-3 px-4 font-bold text-primary">Price From</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exampleCabinets.map((c) => (
+                  <tr key={c.type} className="border-b border-border/50">
+                    <td className="py-3 px-4 font-medium text-foreground">{c.type}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{c.dims}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{c.material}</td>
+                    <td className="py-3 px-4 text-right font-bold text-primary">{c.price}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4">
+            Prices are indicative and vary based on material selection and hardware. For an exact quote, use the room planner and portal.
+          </p>
+        </div>
+      </section>
+
+      {/* Bunnings comparison */}
+      <section className="py-16 bg-card border-t border-b border-border">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <h2 className="text-2xl font-bold text-foreground mb-2">Big‑Box Price Examples</h2>
+          <p className="text-xs text-muted-foreground mb-6">Bunnings Kaboodle — public prices as at 17 Feb 2026. Excludes doors/handles/installation where applicable.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Item</th>
+                  <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Price (AUD)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bunningsExamples.map((b) => (
+                  <tr key={b.item} className="border-b border-border/50">
+                    <td className="py-3 px-4 text-foreground">{b.item}</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">{b.price}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature comparison */}
+      <section className="py-16">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <h2 className="text-2xl font-bold text-foreground mb-6">How We Compare</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Feature</th>
+                  <th className="text-left py-3 px-4 font-bold text-primary">Bower Building</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Big‑Box (Kaboodle)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row) => (
+                  <tr key={row.feature} className="border-b border-border/50">
+                    <td className="py-3 px-4 font-medium text-foreground">{row.feature}</td>
+                    <td className="py-3 px-4 text-foreground flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" /> {row.bower}
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground">{row.box}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -107,16 +155,16 @@ const PricingPage = () => {
         </div>
       </section>
 
-      {/* Disclaimer + CTA */}
+      {/* CTA */}
       <section className="py-16">
         <div className="container mx-auto px-4 text-center max-w-2xl">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Get Your Exact Price in Minutes</h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Prices are indicative and based on standard configurations with white melamine carcass and laminate doors. 
-            Actual pricing depends on your chosen materials, sizes, and hardware. Delivery is additional and varies by location.
+            Prices are indicative. Actual pricing depends on your chosen materials, sizes, and hardware. Delivery varies by location.
           </p>
           <Link to="/room-planner">
             <Button size="lg" className="font-semibold text-base px-8">
-              Design & Get Your Price <ArrowRight className="ml-2 h-5 w-5" />
+              Design & Quote <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
         </div>

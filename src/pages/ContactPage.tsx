@@ -8,21 +8,53 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Phone, Mail, MapPin } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const projectTypes = ["Kitchen", "Laundry", "Bathroom", "Wardrobe", "Other"];
 
 const ContactPage = () => {
   const [sending, setSending] = useState(false);
+  const [projectType, setProjectType] = useState("");
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSending(true);
-    // Placeholder — will be wired to Supabase later
-    setTimeout(() => {
-      toast.success("Thanks! We'll be in touch within 1 business day.");
+
+    const form = e.target as HTMLFormElement;
+    const formData = new FormData(form);
+
+    const nameFirst = (formData.get("name_first") as string)?.trim();
+    const nameLast = (formData.get("name_last") as string)?.trim();
+    const email = (formData.get("email") as string)?.trim();
+    const phone = (formData.get("phone") as string)?.trim() || null;
+    const message = (formData.get("message") as string)?.trim();
+
+    if (!nameFirst || !nameLast || !email || !projectType || !message) {
+      toast.error("Please fill in all required fields.");
       setSending(false);
-      (e.target as HTMLFormElement).reset();
-    }, 800);
+      return;
+    }
+
+    const { error } = await supabase.from("contact_submissions").insert({
+      name_first: nameFirst,
+      name_last: nameLast,
+      email,
+      phone,
+      project_type: projectType,
+      message,
+      source_page: "/contact",
+    });
+
+    if (error) {
+      toast.error("Something went wrong. Please try again or call us directly.");
+      console.error("Contact form error:", error);
+    } else {
+      toast.success("Thanks! We'll be in touch within 1 business day.");
+      form.reset();
+      setProjectType("");
+    }
+
+    setSending(false);
   };
 
   return (
@@ -34,10 +66,10 @@ const ContactPage = () => {
               Contact
             </p>
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
-              Let's Talk Cabinets
+              Get in Touch
             </h1>
             <p className="text-lg text-muted-foreground">
-              Have a question or ready to get started? Fill in the form below and we'll get back to you within one business day.
+              Have a question or ready to start? We'd love to hear from you. Fill in the form below and we'll get back to you within one business day.
             </p>
           </div>
 
@@ -48,36 +80,40 @@ const ContactPage = () => {
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="name">Name *</Label>
-                      <Input id="name" required placeholder="Your name" />
+                      <Label htmlFor="name_first">First Name *</Label>
+                      <Input id="name_first" name="name_first" required placeholder="First name" maxLength={100} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email *</Label>
-                      <Input id="email" type="email" required placeholder="you@example.com" />
+                      <Label htmlFor="name_last">Last Name *</Label>
+                      <Input id="name_last" name="name_last" required placeholder="Last name" maxLength={100} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" type="tel" placeholder="04XX XXX XXX" />
+                      <Label htmlFor="email">Email *</Label>
+                      <Input id="email" name="email" type="email" required placeholder="you@example.com" maxLength={255} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="project-type">Project Type</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projectTypes.map((t) => (
-                            <SelectItem key={t} value={t.toLowerCase()}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input id="phone" name="phone" type="tel" placeholder="04XX XXX XXX" maxLength={20} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="message">Message</Label>
-                    <Textarea id="message" rows={5} placeholder="Tell us about your project…" />
+                    <Label htmlFor="project-type">Project Type *</Label>
+                    <Select value={projectType} onValueChange={setProjectType} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projectTypes.map((t) => (
+                          <SelectItem key={t} value={t.toLowerCase()}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Message *</Label>
+                    <Textarea id="message" name="message" rows={5} required placeholder="Tell us about your project…" maxLength={2000} />
                   </div>
                   <Button type="submit" className="w-full font-semibold" disabled={sending}>
                     {sending ? "Sending…" : "Send Enquiry"}
@@ -94,8 +130,8 @@ const ContactPage = () => {
                     <Phone className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Phone</p>
-                      <a href="tel:0400000000" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                        0400 000 000
+                      <a href="tel:+61437732286" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                        0437 732 286
                       </a>
                     </div>
                   </div>
@@ -111,8 +147,8 @@ const ContactPage = () => {
                   <div className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Location</p>
-                      <p className="text-sm text-muted-foreground">Queensland, Australia</p>
+                      <p className="text-sm font-semibold text-foreground">Address</p>
+                      <p className="text-sm text-muted-foreground">2/50 Owen St, Craglie 4877<br />QLD, Australia</p>
                     </div>
                   </div>
                 </CardContent>

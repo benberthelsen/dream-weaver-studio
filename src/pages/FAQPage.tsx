@@ -9,15 +9,15 @@ const faqSections = [
     items: [
       {
         q: "How do I place an order?",
-        a: "Sign up for a free account, design your cabinets in our 3D room planner, and submit your order online. Our team reviews every design for accuracy before manufacturing begins.",
+        a: "Use the room planner/portal to design your cabinets and receive a quote, then submit your order online. Our team reviews every design for accuracy before manufacturing begins.",
       },
       {
-        q: "Can I modify my order after placing it?",
-        a: "You can make changes within 24 hours of placing your order. After that, manufacturing may have already started. Contact us as soon as possible if you need to make changes.",
-      },
-      {
-        q: "Is there a minimum order?",
+        q: "What's the minimum order?",
         a: "No minimum order. Whether you need a single cabinet or a full kitchen, we're happy to help.",
+      },
+      {
+        q: "Can I change my order after submitting?",
+        a: "Contact us as soon as possible if you need to make changes. We'll do our best to accommodate requests before manufacturing begins.",
       },
     ],
   },
@@ -26,11 +26,11 @@ const faqSections = [
     items: [
       {
         q: "What materials do you use?",
-        a: "We use premium HMR (High Moisture Resistant) board for carcasses and offer doors in a wide range of finishes from brands like Laminex and Polytec. All hardware is from Blum or Hettich.",
+        a: "Material options are presented in the portal and our collections tool. We use premium HMR (High Moisture Resistant) board for carcasses and offer doors in a wide range of finishes. All hardware is from Blum or Hettich.",
       },
       {
-        q: "Are the cabinets moisture resistant?",
-        a: "Yes. Our standard carcass material is HMR board which is specifically designed for wet areas like kitchens, laundries and bathrooms.",
+        q: "Can I see samples?",
+        a: "You can browse our material library online. If you'd like physical samples, contact us and we'll arrange them where operationally supported.",
       },
       {
         q: "What edge banding do you use?",
@@ -39,36 +39,36 @@ const faqSections = [
     ],
   },
   {
-    title: "Delivery",
+    title: "Delivery & Assembly",
     items: [
-      {
-        q: "Where do you deliver?",
-        a: "We currently deliver throughout South East Queensland. If you're outside this area, contact us and we'll see what we can arrange.",
-      },
       {
         q: "How long does delivery take?",
-        a: "Typical turnaround is 10–15 business days from order confirmation. Larger or complex orders may take longer. You'll receive a timeline at checkout.",
+        a: "Approximately 3 weeks once processed (project dependent). You'll receive a timeline at order confirmation.",
       },
       {
-        q: "How is the order packaged?",
-        a: "All panels are carefully wrapped and stacked on a pallet. Smaller orders may be boxed. Hardware is packed separately with clear labelling.",
+        q: "Where do you deliver?",
+        a: "We currently deliver within our service area. Contact us if you're unsure whether we cover your location.",
       },
-    ],
-  },
-  {
-    title: "Assembly & Support",
-    items: [
       {
-        q: "Do I need special tools to assemble?",
-        a: "No. A cordless drill, a spirit level and a tape measure are all you need. We provide step-by-step instructions and video guides.",
+        q: "How hard is it to assemble?",
+        a: "Minimal tools required — just a cordless drill, a spirit level and a tape measure. We provide step-by-step instructions and video guides. We're here every step of the way if you get stuck.",
       },
       {
         q: "Can you recommend an installer?",
         a: "Yes — if you'd prefer professional installation, we can connect you with trusted local tradespeople in your area.",
       },
+    ],
+  },
+  {
+    title: "Pricing",
+    items: [
       {
-        q: "What if something doesn't fit?",
-        a: "Every panel is CNC-cut to within 0.1mm tolerance. If there's ever an issue, contact us and we'll sort it out — we stand behind our work.",
+        q: "Are there hidden costs?",
+        a: "No. The portal quote is itemised — you receive instant cost estimates as you design. Every panel, hinge, and edge finish is included.",
+      },
+      {
+        q: "How does your pricing compare to big-box stores?",
+        a: "Our custom-to-spec cabinets are competitively priced against modular big-box alternatives, with the advantage of exact sizing and trade-quality components. See our pricing page for detailed examples.",
       },
     ],
   },

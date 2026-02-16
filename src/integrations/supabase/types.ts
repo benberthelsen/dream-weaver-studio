@@ -177,6 +177,51 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_submissions: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          message: string
+          name_first: string
+          name_last: string
+          phone: string | null
+          project_type: string
+          source_page: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          message: string
+          name_first: string
+          name_last: string
+          phone?: string | null
+          project_type: string
+          source_page?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string
+          name_first?: string
+          name_last?: string
+          phone?: string | null
+          project_type?: string
+          source_page?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: []
+      }
       inspiration_gallery: {
         Row: {
           color_palette: string[] | null

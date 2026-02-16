@@ -28,6 +28,7 @@ export function SiteFooter() {
               <Link to="/gallery" className="hover:text-foreground transition-colors">Gallery</Link>
               <Link to="/room-planner" className="hover:text-foreground transition-colors">Room Planner</Link>
               <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
+              <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
             </nav>
           </div>
 
@@ -44,14 +45,14 @@ export function SiteFooter() {
           <div className="space-y-4">
             <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Contact</h4>
             <div className="flex flex-col gap-3 text-sm">
-              <a href="tel:0400000000" className="flex items-center gap-2 hover:text-foreground transition-colors">
-                <Phone className="h-4 w-4" /> 0400 000 000
+              <a href="tel:+61437732286" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                <Phone className="h-4 w-4" /> 0437 732 286
               </a>
               <a href="mailto:info@bowerbuilding.net" className="flex items-center gap-2 hover:text-foreground transition-colors">
                 <Mail className="h-4 w-4" /> info@bowerbuilding.net
               </a>
-              <span className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" /> Queensland, Australia
+              <span className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 shrink-0 mt-0.5" /> 2/50 Owen St, Craglie 4877<br />QLD, Australia
               </span>
             </div>
           </div>
