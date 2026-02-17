@@ -1,6 +1,5 @@
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { HeroSection } from "@/components/home/HeroSection";
-import { TrustStrip } from "@/components/home/TrustStrip";
 import { ProcessSteps } from "@/components/home/ProcessSteps";
 import { BenefitsGrid } from "@/components/home/BenefitsGrid";
 import { ComparisonTeaser } from "@/components/home/ComparisonTeaser";
@@ -13,7 +12,6 @@ const HomePage = () => {
   return (
     <SiteLayout>
       <HeroSection />
-      <TrustStrip />
       <ProcessSteps />
       <BenefitsGrid />
       <ComparisonTeaser />
