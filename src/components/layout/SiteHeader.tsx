@@ -25,11 +25,11 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-card border-b border-border shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-primary border-b border-primary/80 shadow-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-2">
-          <span className="text-xl tracking-tight">
-            <span className="font-extrabold text-primary">BOWER</span>{" "}
+          <span className="text-xl tracking-tight text-primary-foreground">
+            <span className="font-extrabold">BOWER</span>{" "}
             <span className="font-semibold text-accent">CABINETS</span>
           </span>
         </Link>
@@ -42,8 +42,8 @@ export function SiteHeader() {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary",
-                  isActive(link.path) && "text-primary font-semibold"
+                  "text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10",
+                  isActive(link.path) && "text-primary-foreground font-semibold"
                 )}
               >
                 {link.label}
@@ -54,7 +54,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Link to="/board" className="hidden sm:block">
-            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-sm">
+            <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold text-sm">
               Pro Tools <ArrowRight className="ml-1 h-3.5 w-3.5" />
             </Button>
           </Link>
@@ -62,19 +62,19 @@ export function SiteHeader() {
           {/* Mobile menu */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon" className="text-foreground">
+              <Button variant="ghost" size="icon" className="text-primary-foreground">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="bg-card text-foreground border-border w-72">
+            <SheetContent side="right" className="bg-primary text-primary-foreground border-primary/50 w-72">
               <nav className="flex flex-col gap-1 mt-8">
                 {navLinks.map((link) => (
                   <Link key={link.path} to={link.path} onClick={() => setOpen(false)}>
                     <Button
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary",
-                        isActive(link.path) && "text-primary font-semibold"
+                        "w-full justify-start text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10",
+                        isActive(link.path) && "text-primary-foreground font-semibold"
                       )}
                     >
                       {link.label}
@@ -82,7 +82,7 @@ export function SiteHeader() {
                   </Link>
                 ))}
                 <Link to="/board" onClick={() => setOpen(false)}>
-                  <Button className="w-full mt-4 bg-primary text-primary-foreground font-semibold">
+                  <Button className="w-full mt-4 bg-accent text-accent-foreground font-semibold">
                     Pro Tools <ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 </Link>
