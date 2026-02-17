@@ -1,15 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Wand2, Trash2, Download, Share2 } from "lucide-react";
+import { Wand2, Trash2, Download, Share2, CheckCircle2 } from "lucide-react";
 import type { BackgroundPreset, StylePreset } from "@/types/board";
+import { toast } from "sonner";
 
 const backgroundPresets: BackgroundPreset[] = [
   { id: "white-marble", name: "White Marble", value: "clean white marble surface", preview: "#f5f5f5" },
@@ -53,7 +49,7 @@ export function ControlPanel({
 }: ControlPanelProps) {
   const handleDownload = () => {
     if (!generatedImage) return;
-    
+
     const link = document.createElement("a");
     link.href = generatedImage;
     link.download = `flatlay-moodboard-${Date.now()}.png`;
@@ -62,14 +58,47 @@ export function ControlPanel({
     document.body.removeChild(link);
   };
 
+  const handleShare = async () => {
+    if (!generatedImage) return;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Bower Cabinet Flat-Lay",
+          text: "Check out this flat-lay I generated.",
+          url: generatedImage,
+        });
+        return;
+      } catch {
+        // fall through to clipboard
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(generatedImage);
+      toast.success("Image link copied to clipboard");
+    } catch {
+      toast.error("Unable to share automatically. Please copy the image manually.");
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-card">
       <div className="p-4 border-b">
-        <h2 className="font-semibold text-lg">Settings</h2>
-        <p className="text-sm text-muted-foreground">Customize your flat-lay</p>
+        <h2 className="font-semibold text-lg">Flat-Lay Settings</h2>
+        <p className="text-sm text-muted-foreground">Set your look, then generate the final image.</p>
       </div>
 
       <div className="flex-1 p-4 space-y-6 overflow-y-auto">
+        <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workflow</p>
+          <div className="space-y-1.5 text-xs">
+            <p className="flex items-center gap-2 text-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Add products to board</p>
+            <p className="flex items-center gap-2 text-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Choose background + lighting</p>
+            <p className="flex items-center gap-2 text-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Generate and download</p>
+          </div>
+        </div>
+
         <div className="space-y-3">
           <Label>Background Surface</Label>
           <Select
@@ -86,10 +115,7 @@ export function ControlPanel({
               {backgroundPresets.map((preset) => (
                 <SelectItem key={preset.id} value={preset.id}>
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-4 h-4 rounded border"
-                      style={{ backgroundColor: preset.preview }}
-                    />
+                    <div className="w-4 h-4 rounded border" style={{ backgroundColor: preset.preview }} />
                     {preset.name}
                   </div>
                 </SelectItem>
@@ -115,9 +141,7 @@ export function ControlPanel({
                 <SelectItem key={preset.id} value={preset.id}>
                   <div className="flex flex-col">
                     <span>{preset.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {preset.description}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{preset.description}</span>
                   </div>
                 </SelectItem>
               ))}
@@ -128,7 +152,10 @@ export function ControlPanel({
         <Separator />
 
         <div className="space-y-3">
-          <Label>Quick Presets</Label>
+          <div className="flex items-center justify-between">
+            <Label>Quick Presets</Label>
+            <Badge variant="secondary" className="text-[10px]">One-click setup</Badge>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {[
               { name: "Kitchen Modern", bg: "white-marble", style: "studio" },
@@ -156,14 +183,9 @@ export function ControlPanel({
       </div>
 
       <div className="p-4 border-t space-y-3">
-        <Button
-          onClick={onGenerate}
-          disabled={!hasItems || isGenerating}
-          className="w-full"
-          size="lg"
-        >
+        <Button onClick={onGenerate} disabled={!hasItems || isGenerating} className="w-full" size="lg">
           <Wand2 className="mr-2 h-4 w-4" />
-          {isGenerating ? "Generating..." : "Generate Flat-Lay"}
+          {isGenerating ? "Generating Flat-Lay..." : "Generate Flat-Lay"}
         </Button>
 
         {generatedImage && (
@@ -172,19 +194,14 @@ export function ControlPanel({
               <Download className="mr-2 h-4 w-4" />
               Download
             </Button>
-            <Button variant="outline" className="flex-1">
+            <Button variant="outline" className="flex-1" onClick={handleShare}>
               <Share2 className="mr-2 h-4 w-4" />
               Share
             </Button>
           </div>
         )}
 
-        <Button
-          variant="ghost"
-          onClick={onClear}
-          disabled={!hasItems}
-          className="w-full text-muted-foreground"
-        >
+        <Button variant="ghost" onClick={onClear} disabled={!hasItems} className="w-full text-muted-foreground">
           <Trash2 className="mr-2 h-4 w-4" />
           Clear Board
         </Button>
