@@ -72,7 +72,7 @@ export function StickyHelpButton() {
                 ))}
               </SelectContent>
             </Select>
-            <Button type="submit" size="sm" className="w-full font-semibold" disabled={sending}>
+            <Button type="submit" size="sm" className="w-full font-semibold bg-accent text-accent-foreground hover:bg-accent/90" disabled={sending}>
               <Send className="mr-2 h-3.5 w-3.5" />
               {sending ? "Sending…" : "Call Me Back"}
             </Button>
@@ -82,7 +82,7 @@ export function StickyHelpButton() {
       <Button
         onClick={() => setOpen(!open)}
         size="lg"
-        className="rounded-full shadow-lg h-14 w-14 p-0"
+        className="rounded-full shadow-lg h-14 w-14 p-0 bg-accent text-accent-foreground hover:bg-accent/90"
       >
         {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
       </Button>

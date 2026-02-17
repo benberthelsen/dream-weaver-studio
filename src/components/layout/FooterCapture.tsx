@@ -48,13 +48,13 @@ export function FooterCapture() {
   };
 
   return (
-    <div className="border-t border-border pt-8">
-      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider mb-4">Quick Enquiry</h4>
+    <div className="border-t border-primary-foreground/20 pt-8 lg:border-t-0 lg:pt-0">
+      <h4 className="font-semibold text-sm uppercase tracking-wider mb-4">Quick Enquiry</h4>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <Input name="name" placeholder="Your name" required maxLength={100} className="h-9 text-sm bg-secondary/50" />
-        <Input name="phone" type="tel" placeholder="Phone number" required maxLength={20} className="h-9 text-sm bg-secondary/50" />
+        <Input name="name" placeholder="Your name" required maxLength={100} className="h-9 text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground placeholder:text-primary-foreground/50" />
+        <Input name="phone" type="tel" placeholder="Phone number" required maxLength={20} className="h-9 text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground placeholder:text-primary-foreground/50" />
         <Select value={projectType} onValueChange={setProjectType}>
-          <SelectTrigger className="h-9 text-sm bg-secondary/50">
+          <SelectTrigger className="h-9 text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground">
             <SelectValue placeholder="What are you building?" />
           </SelectTrigger>
           <SelectContent>
@@ -63,7 +63,7 @@ export function FooterCapture() {
             ))}
           </SelectContent>
         </Select>
-        <Button type="submit" size="sm" className="w-full font-semibold" disabled={sending}>
+        <Button type="submit" size="sm" className="w-full font-semibold bg-accent text-accent-foreground hover:bg-accent/90" disabled={sending}>
           <Send className="mr-2 h-3.5 w-3.5" />
           {sending ? "Sending…" : "Get in Touch"}
         </Button>

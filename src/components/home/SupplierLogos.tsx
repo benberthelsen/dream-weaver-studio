@@ -1,23 +1,22 @@
 import { Link } from "react-router-dom";
 
-export function SupplierLogos() {
-  const suppliers = ["Laminex", "Polytec", "Hettich", "Blum"];
+const suppliers = ["Laminex", "Polytec", "Hettich", "Blum", "Häfele", "Formica"];
 
+export function SupplierLogos() {
   return (
-    <section className="py-16 bg-secondary/20 border-y border-border/40">
-      <div className="container mx-auto px-4">
-        <p className="text-center text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-          Choose From Premium Suppliers
+    <section className="py-16 bg-background border-b border-border">
+      <div className="container mx-auto px-4 text-center">
+        <h2 className="text-2xl md:text-3xl text-foreground mb-3">
+          Choose From 12+ Premium Suppliers
+        </h2>
+        <p className="text-sm text-muted-foreground mb-10">
+          <Link to="/collections" className="text-accent hover:underline font-medium">Browse Our Full Material Library →</Link>
         </p>
-        <p className="text-center text-xs text-muted-foreground mb-8">
-          Your final available range is shown in our material library.{" "}
-          <Link to="/collections" className="text-primary hover:underline">Browse material library →</Link>
-        </p>
-        <div className="flex flex-wrap justify-center items-center gap-8 md:gap-14">
+        <div className="flex flex-wrap justify-center items-center gap-8 md:gap-12">
           {suppliers.map((name) => (
             <span
               key={name}
-              className="text-lg md:text-xl font-bold text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors tracking-wide"
+              className="text-lg md:text-xl font-bold text-muted-foreground/50 hover:text-foreground transition-colors tracking-wide"
             >
               {name}
             </span>

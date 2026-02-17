@@ -1,18 +1,18 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, LayoutGrid } from "lucide-react";
+import { Menu, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navLinks = [
-  { path: "/", label: "HOME" },
-  { path: "/how-it-works", label: "HOW IT WORKS" },
-  { path: "/pricing", label: "PRICING" },
-  { path: "/gallery", label: "GALLERY" },
-  { path: "/room-planner", label: "ROOM PLANNER" },
+  { path: "/", label: "Home" },
+  { path: "/how-it-works", label: "How It Works" },
+  { path: "/pricing", label: "Pricing" },
+  { path: "/gallery", label: "Gallery" },
+  { path: "/room-planner", label: "Room Planner" },
   { path: "/faq", label: "FAQ" },
-  { path: "/contact", label: "CONTACT" },
+  { path: "/contact", label: "Contact" },
 ];
 
 export function SiteHeader() {
@@ -25,13 +25,13 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-card text-foreground">
+    <header className="sticky top-0 z-50 w-full bg-card border-b border-border shadow-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded bg-primary flex items-center justify-center">
-            <LayoutGrid className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="font-bold text-lg tracking-wide uppercase">Bower Building</span>
+        <Link to="/" className="flex items-center gap-2">
+          <span className="text-xl tracking-tight">
+            <span className="font-extrabold text-primary">BOWER</span>{" "}
+            <span className="font-semibold text-accent">CABINETS</span>
+          </span>
         </Link>
 
         {/* Desktop nav */}
@@ -42,8 +42,8 @@ export function SiteHeader() {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "text-xs font-semibold tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary",
-                  isActive(link.path) && "text-primary bg-secondary"
+                  "text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary",
+                  isActive(link.path) && "text-primary font-semibold"
                 )}
               >
                 {link.label}
@@ -54,8 +54,8 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Link to="/board" className="hidden sm:block">
-            <Button variant="outline" size="sm" className="text-xs border-primary/50 text-primary hover:bg-primary/10">
-              PRO TOOLS
+            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-sm">
+              Pro Tools <ArrowRight className="ml-1 h-3.5 w-3.5" />
             </Button>
           </Link>
 
@@ -66,15 +66,15 @@ export function SiteHeader() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="bg-card text-foreground border-border w-64">
+            <SheetContent side="right" className="bg-card text-foreground border-border w-72">
               <nav className="flex flex-col gap-1 mt-8">
                 {navLinks.map((link) => (
                   <Link key={link.path} to={link.path} onClick={() => setOpen(false)}>
                     <Button
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start text-sm font-semibold tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary",
-                        isActive(link.path) && "text-primary bg-secondary"
+                        "w-full justify-start text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary",
+                        isActive(link.path) && "text-primary font-semibold"
                       )}
                     >
                       {link.label}
@@ -82,8 +82,8 @@ export function SiteHeader() {
                   </Link>
                 ))}
                 <Link to="/board" onClick={() => setOpen(false)}>
-                  <Button variant="outline" className="w-full mt-4 border-primary/50 text-primary hover:bg-primary/10">
-                    PRO TOOLS
+                  <Button className="w-full mt-4 bg-primary text-primary-foreground font-semibold">
+                    Pro Tools <ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 </Link>
               </nav>

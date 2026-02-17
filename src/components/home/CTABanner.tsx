@@ -4,20 +4,20 @@ import { ArrowRight } from "lucide-react";
 
 export function CTABanner() {
   return (
-    <section className="py-20 bg-card border-t border-border">
+    <section className="py-20 bg-primary text-primary-foreground">
       <div className="container mx-auto px-4 text-center space-y-6">
-        <h2 className="text-3xl md:text-4xl font-bold text-foreground">Ready to Start Your Project?</h2>
-        <p className="text-muted-foreground max-w-md mx-auto">
-          Design your cabinets online, get an instant quote, then choose delivery and next steps.
+        <h2 className="text-3xl md:text-4xl">Ready to Start Your Project?</h2>
+        <p className="text-primary-foreground/70 max-w-md mx-auto">
+          Design your cabinets online today. Get an instant quote. No obligation.
         </p>
         <div className="flex flex-wrap justify-center gap-4 pt-2">
           <Link to="/room-planner">
-            <Button size="lg" className="font-semibold text-base px-8">
+            <Button size="lg" className="font-semibold text-base px-8 bg-accent text-accent-foreground hover:bg-accent/90">
               Start Designing <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
           <Link to="/contact">
-            <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-secondary font-semibold text-base px-8">
+            <Button size="lg" variant="outline" className="font-semibold text-base px-8 border-primary-foreground/40 text-primary-foreground hover:bg-primary-foreground/10 bg-transparent">
               Get in Touch
             </Button>
           </Link>
