@@ -51,10 +51,10 @@ export default function FlatlaysPage() {
       <header className="border-b">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4 mb-6">
-            <Link to="/inspiration" className="text-muted-foreground hover:text-foreground">
+            <Link to="/gallery" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            <h1 className="text-3xl font-light">Flat Lays</h1>
+            <h1 className="text-3xl font-light">Flat-Lay Gallery</h1>
           </div>
           
           {/* Filters */}

@@ -4,24 +4,22 @@ const suppliers = ["Laminex", "Polytec", "Hettich", "Blum", "Häfele", "Formica"
 
 export function SupplierLogos() {
   return (
-    <section className="py-16 bg-background border-b border-border">
+    <section className="py-14 bg-card border-y border-border">
       <div className="container mx-auto px-4 text-center">
-        <h2 className="text-2xl md:text-3xl text-foreground mb-3">
-          Choose From 12+ Premium Suppliers
-        </h2>
-        <p className="text-sm text-muted-foreground mb-10">
-          <Link to="/collections" className="text-accent hover:underline font-medium">Browse Our Full Material Library →</Link>
-        </p>
-        <div className="flex flex-wrap justify-center items-center gap-3 md:gap-4">
+        <h2 className="text-2xl md:text-4xl text-foreground mb-8">Choose From 12+ Premium Suppliers</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 max-w-5xl mx-auto mb-6">
           {suppliers.map((name) => (
             <span
               key={name}
-              className="px-5 py-2.5 rounded-lg border border-border bg-card text-base md:text-lg font-bold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors tracking-wide"
+              className="px-4 py-3 rounded-md border border-border bg-background text-lg font-semibold text-primary shadow-sm tracking-wide"
             >
               {name}
             </span>
           ))}
         </div>
+        <Link to="/collections" className="text-sm text-primary hover:text-accent transition-colors underline underline-offset-4">
+          Browse Our Full Material Library →
+        </Link>
       </div>
     </section>
   );

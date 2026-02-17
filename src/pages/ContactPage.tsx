@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Phone, Mail, MapPin } from "lucide-react";
+import { Phone, Mail, MapPin, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,7 @@ const projectTypes = ["Kitchen", "Laundry", "Bathroom", "Wardrobe", "Other"];
 const ContactPage = () => {
   const [sending, setSending] = useState(false);
   const [projectType, setProjectType] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -35,17 +36,24 @@ const ContactPage = () => {
     }
 
     const { error } = await supabase.from("contact_submissions").insert({
-      name_first: nameFirst, name_last: nameLast, email, phone,
-      project_type: projectType, message, source_page: "/contact",
+      name_first: nameFirst,
+      name_last: nameLast,
+      email,
+      phone,
+      project_type: projectType,
+      message,
+      source_page: "/contact",
     });
 
     if (error) {
       toast.error("Something went wrong. Please try again or call us directly.");
     } else {
+      setIsSubmitted(true);
       toast.success("Thanks! We'll be in touch within 1 business day.");
       form.reset();
       setProjectType("");
     }
+
     setSending(false);
   };
 
@@ -63,6 +71,16 @@ const ContactPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <Card className="lg:col-span-2 border-border bg-card">
               <CardContent className="p-6 md:p-8">
+                {isSubmitted && (
+                  <div className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-emerald-900">Thanks! Your message has been sent.</p>
+                      <p className="text-sm text-emerald-700">Our team will contact you within one business day.</p>
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -87,10 +105,14 @@ const ContactPage = () => {
                   <div className="space-y-2">
                     <Label htmlFor="project-type">Project Type *</Label>
                     <Select value={projectType} onValueChange={setProjectType} required>
-                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
                       <SelectContent>
                         {projectTypes.map((t) => (
-                          <SelectItem key={t} value={t.toLowerCase()}>{t}</SelectItem>
+                          <SelectItem key={t} value={t.toLowerCase()}>
+                            {t}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -113,21 +135,29 @@ const ContactPage = () => {
                     <Phone className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Phone</p>
-                      <a href="tel:+61437732286" className="text-sm text-muted-foreground hover:text-accent transition-colors">0437 732 286</a>
+                      <a href="tel:+61437732286" className="text-sm text-muted-foreground hover:text-accent transition-colors">
+                        0437 732 286
+                      </a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <Mail className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Email</p>
-                      <a href="mailto:info@bowerbuilding.net" className="text-sm text-muted-foreground hover:text-accent transition-colors">info@bowerbuilding.net</a>
+                      <a href="mailto:info@bowerbuilding.net" className="text-sm text-muted-foreground hover:text-accent transition-colors">
+                        info@bowerbuilding.net
+                      </a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Address</p>
-                      <p className="text-sm text-muted-foreground">2/50 Owen St, Craglie 4877<br />QLD, Australia</p>
+                      <p className="text-sm text-muted-foreground">
+                        2/50 Owen St, Craiglie 4877
+                        <br />
+                        QLD, Australia
+                      </p>
                     </div>
                   </div>
                 </CardContent>
