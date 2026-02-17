@@ -1,65 +1,75 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Check, X } from "lucide-react";
+import { Check, ArrowRight } from "lucide-react";
 
-const bowerPoints = ["Custom Fit", "Premium Quality", "Affordable Price"];
-const bigBoxPoints = ["Standard Sizes", "Basic Melamine", "Higher Cost"];
+const pricingExamples = [
+  {
+    image: "https://images.unsplash.com/photo-1600566753086-00f18f6b0049?w=400&h=300&fit=crop",
+    title: "Small Laundry",
+    price: "From $950",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop",
+    title: "L-Shaped Kitchen",
+    price: "From $2,950",
+  },
+];
+
+const bowerAdvantages = ["Custom Sizes", "Premium Materials", "Pro-Grade Hardware"];
 
 export function ComparisonTeaser() {
   return (
     <section className="py-20 bg-secondary">
       <div className="container mx-auto px-4 max-w-5xl">
-        <h2 className="text-2xl md:text-3xl text-center text-foreground mb-10">
-          Better Than Off‑the‑Shelf
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 rounded-xl overflow-hidden shadow-sm">
-          {/* Bower side */}
-          <div className="relative overflow-hidden">
-            <img
-              src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop"
-              alt="Custom Bower kitchen"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-primary/80" />
-            <div className="relative p-8 text-primary-foreground min-h-[280px] flex flex-col justify-center">
-              <h3 className="text-lg font-bold mb-6">Bower Cabinets</h3>
-              <ul className="space-y-4">
-                {bowerPoints.map((p) => (
-                  <li key={p} className="flex items-center gap-3 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Example Pricing - Left */}
+          <div className="rounded-xl border border-border bg-card p-8">
+            <h2 className="text-2xl font-bold text-foreground mb-6">Example Pricing</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {pricingExamples.map((ex) => (
+                <div key={ex.title} className="space-y-3">
+                  <div className="aspect-[4/3] rounded-lg overflow-hidden bg-muted">
+                    <img
+                      src={ex.image}
+                      alt={ex.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                  <h3 className="font-bold text-sm text-foreground text-center">{ex.title}</h3>
+                  <p className="text-accent font-bold text-center">{ex.price}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Better Than Big-Box - Right */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+            <div className="p-8 flex-1">
+              <h2 className="text-2xl font-bold text-foreground mb-6">Better Than Big-Box Stores</h2>
+              <div className="rounded-lg bg-accent/10 p-5 space-y-3 mb-6">
+                {bowerAdvantages.map((item) => (
+                  <div key={item} className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent shrink-0" />
-                    {p}
-                  </li>
+                    <span className="text-sm font-medium text-foreground">{item}</span>
+                  </div>
                 ))}
-              </ul>
+              </div>
+              <Link to="/pricing">
+                <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold">
+                  Compare Pricing <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+            <div className="h-40 overflow-hidden">
+              <img
+                src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=600&h=300&fit=crop"
+                alt="Premium kitchen"
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
             </div>
           </div>
-          {/* Big box side */}
-          <div className="relative overflow-hidden">
-            <img
-              src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=600&h=400&fit=crop"
-              alt="Standard big box kitchen"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-card/90" />
-            <div className="relative p-8 text-foreground min-h-[280px] flex flex-col justify-center">
-              <h3 className="text-lg font-bold mb-6 text-muted-foreground">Big Box Stores</h3>
-              <ul className="space-y-4">
-                {bigBoxPoints.map((p) => (
-                  <li key={p} className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <X className="h-5 w-5 text-destructive/60 shrink-0" />
-                    {p}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-        <div className="text-center mt-8">
-          <Link to="/pricing">
-            <Button className="font-semibold bg-accent text-accent-foreground hover:bg-accent/90 px-8">
-              Compare Pricing
-            </Button>
-          </Link>
         </div>
       </div>
     </section>
