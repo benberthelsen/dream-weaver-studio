@@ -11,7 +11,6 @@ const steps = [
     title: "Plan & Design",
     description:
       "Design your kitchen, pantry, wardrobe, vanity, shelves, or custom cabinets using our online program.",
-    cta: { label: "Launch Room Planner", to: "/room-planner" },
   },
   {
     icon: Palette,
@@ -19,7 +18,6 @@ const steps = [
     title: "Choose Materials & Options",
     description:
       "Select board colours, edging, and hardware from the ranges available in our portal and tools.",
-    cta: { label: "Browse Materials", to: "/collections" },
   },
   {
     icon: Eye,
@@ -27,7 +25,6 @@ const steps = [
     title: "Get Your Quote",
     description:
       "See pricing as you build, print or save a quote, and review job details before submitting.",
-    cta: null,
   },
   {
     icon: Truck,
@@ -35,7 +32,6 @@ const steps = [
     title: "We Manufacture & Deliver",
     description:
       "After you submit, we review and process your job. Typical processing time is approximately 3 weeks (project dependent).",
-    cta: null,
   },
 ];
 
@@ -72,13 +68,6 @@ const HowItWorksPage = () => {
                 <div className="space-y-3">
                   <h3 className="text-xl font-bold text-foreground">{step.title}</h3>
                   <p className="text-muted-foreground leading-relaxed">{step.description}</p>
-                  {step.cta && (
-                    <Link to={step.cta.to}>
-                      <Button variant="outline" size="sm" className="mt-2 border-primary/50 text-primary hover:bg-primary/10">
-                        {step.cta.label} <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -86,7 +75,7 @@ const HowItWorksPage = () => {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* Single CTA */}
       <section className="py-16 bg-card border-t border-border">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold text-foreground mb-4">Ready to Get Started?</h2>

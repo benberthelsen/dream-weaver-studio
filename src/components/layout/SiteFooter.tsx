@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { LayoutGrid, Phone, Mail, MapPin } from "lucide-react";
+import { FooterCapture } from "./FooterCapture";
 
 export function SiteFooter() {
   return (
@@ -32,15 +33,6 @@ export function SiteFooter() {
             </nav>
           </div>
 
-          {/* Pro Tools */}
-          <div className="space-y-4">
-            <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Pro Tools</h4>
-            <nav className="flex flex-col gap-2 text-sm">
-              <Link to="/collections" className="hover:text-foreground transition-colors">Material Collections</Link>
-              <Link to="/board" className="hover:text-foreground transition-colors">Board Builder</Link>
-            </nav>
-          </div>
-
           {/* Contact */}
           <div className="space-y-4">
             <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Contact</h4>
@@ -55,6 +47,11 @@ export function SiteFooter() {
                 <MapPin className="h-4 w-4 shrink-0 mt-0.5" /> 2/50 Owen St, Craglie 4877<br />QLD, Australia
               </span>
             </div>
+          </div>
+
+          {/* Quick Enquiry */}
+          <div>
+            <FooterCapture />
           </div>
         </div>
 

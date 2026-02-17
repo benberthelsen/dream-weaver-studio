@@ -2,7 +2,7 @@ import { SiteLayout } from "@/components/layout/SiteLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { Check, ArrowRight } from "lucide-react";
+import { Check, ArrowRight, Info } from "lucide-react";
 
 const exampleCabinets = [
   { type: "Base cabinet (2 door)", dims: "900w × 720h × 560d", material: "White HMR", price: "$185" },
@@ -10,6 +10,27 @@ const exampleCabinets = [
   { type: "Pantry cabinet", dims: "600w × 2100h × 560d", material: "White HMR", price: "$310" },
   { type: "Drawer base (3 drawer)", dims: "600w × 720h × 560d", material: "White HMR", price: "$245" },
   { type: "Corner base", dims: "900w × 720h × 900d", material: "White HMR", price: "$265" },
+];
+
+const examplePacks = [
+  {
+    title: "Small Laundry",
+    description: "Base + overhead + tall broom cabinet. A tidy laundry solution.",
+    from: "$620",
+    items: "3 cabinets",
+  },
+  {
+    title: "L-Shape Kitchen",
+    description: "6 base units, 4 overheads, 1 pantry, 1 corner. Full working kitchen.",
+    from: "$2,400",
+    items: "12 cabinets",
+  },
+  {
+    title: "Pantry Run",
+    description: "3 full-height pantries with adjustable shelves. Maximum storage.",
+    from: "$930",
+    items: "3 cabinets",
+  },
 ];
 
 const bunningsExamples = [
@@ -25,7 +46,7 @@ const comparisonRows = [
   { feature: "Size flexibility", bower: "Custom‑to‑spec workflow (as designed in portal)", box: "Modular by default; cut‑to‑measure on selected items" },
   { feature: "Quote visibility", bower: "Instant cost estimates as you design", box: "Itemised retail pricing per module" },
   { feature: "Materials / hardware", bower: "Trade‑quality components; range shown in portal", box: "Kaboodle range (doors/colours/parts per catalogue)" },
-  { feature: "Support", bower: "We're here every step of the way", box: "DIY resources and assembly guidance" },
+  { feature: "Support", bower: "Phone support during planning + build", box: "DIY resources and assembly guidance" },
 ];
 
 const whatsIncluded = [
@@ -37,6 +58,13 @@ const whatsIncluded = [
   "Step-by-step assembly instructions",
 ];
 
+const priceDrivers = [
+  { label: "Board colour / brand", effect: "Standard white is lowest; woodgrain or solid colours add $10–$40 per cabinet" },
+  { label: "Hardware (hinges + runners)", effect: "Soft-close Blum upgrades vs standard fittings" },
+  { label: "Drawers vs doors", effect: "Drawer bases cost more than door bases due to runner hardware" },
+  { label: "Cabinet size", effect: "Larger panels = more material cost" },
+];
+
 const PricingPage = () => {
   return (
     <SiteLayout>
@@ -46,15 +74,62 @@ const PricingPage = () => {
           <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">Pricing</p>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">Example Cabinet Pricing</h1>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            See what custom flat‑pack cabinets can cost. For an exact quote, use the room planner and portal.
+            See what custom flat‑pack cabinets can cost. For an exact quote, design in the room planner.
           </p>
         </div>
       </section>
 
-      {/* Bower example pricing table */}
+      {/* Example packs */}
       <section className="pb-16">
         <div className="container mx-auto px-4 max-w-4xl">
-          <h2 className="text-2xl font-bold text-foreground mb-6">Bower Building — Indicative Pricing</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">Real Example Packs</h2>
+          <p className="text-sm text-muted-foreground mb-8">Indicative pricing in White HMR with standard hardware.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {examplePacks.map((pack) => (
+              <Card key={pack.title} className="border-border bg-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{pack.title}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">{pack.description}</p>
+                  <p className="text-xs text-muted-foreground">{pack.items}</p>
+                  <p className="text-2xl font-bold text-primary">From {pack.from}</p>
+                  <Link to="/room-planner">
+                    <Button size="sm" variant="outline" className="w-full border-primary/50 text-primary hover:bg-primary/10 mt-2">
+                      Design & Quote <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* What changes the price */}
+      <section className="pb-16">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Info className="h-5 w-5 text-primary shrink-0" />
+              <h3 className="font-bold text-foreground">What changes the price?</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {priceDrivers.map((d) => (
+                <div key={d.label}>
+                  <p className="text-sm font-semibold text-foreground">{d.label}</p>
+                  <p className="text-xs text-muted-foreground">{d.effect}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Individual cabinet pricing table */}
+      <section className="pb-16">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <h2 className="text-2xl font-bold text-foreground mb-6">Individual Cabinet Pricing</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -78,7 +153,7 @@ const PricingPage = () => {
             </table>
           </div>
           <p className="text-xs text-muted-foreground mt-4">
-            Prices are indicative and vary based on material selection and hardware. For an exact quote, use the room planner and portal.
+            Prices are indicative and vary based on material selection and hardware.
           </p>
         </div>
       </section>
@@ -160,7 +235,7 @@ const PricingPage = () => {
         <div className="container mx-auto px-4 text-center max-w-2xl">
           <h2 className="text-2xl font-bold text-foreground mb-4">Get Your Exact Price in Minutes</h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Prices are indicative. Actual pricing depends on your chosen materials, sizes, and hardware. Delivery varies by location.
+            Actual pricing depends on your chosen materials, sizes, and hardware.
           </p>
           <Link to="/room-planner">
             <Button size="lg" className="font-semibold text-base px-8">

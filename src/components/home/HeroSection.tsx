@@ -1,6 +1,12 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CheckCircle } from "lucide-react";
+
+const microProofs = [
+  "CNC cut + hinge drilled",
+  "Premium boards (Laminex / Polytec)",
+  "Instant quote from your design",
+];
 
 export function HeroSection() {
   return (
@@ -13,11 +19,19 @@ export function HeroSection() {
             Bower Cabinets — You Design, We Create
           </p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
-            Custom Flat‑Pack Cabinets, Delivered to Your Door
+            Custom Flat‑Pack Cabinets, Cut&nbsp;to&nbsp;Size&nbsp;&&nbsp;Delivered
           </h1>
           <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
             Design your dream kitchen, laundry or bathroom online. We cut, drill and edge every panel to your exact specs — you assemble and save.
           </p>
+          <ul className="flex flex-col gap-2 pt-1">
+            {microProofs.map((proof) => (
+              <li key={proof} className="flex items-center gap-2 text-sm text-foreground">
+                <CheckCircle className="h-4 w-4 text-primary shrink-0" />
+                {proof}
+              </li>
+            ))}
+          </ul>
           <div className="flex flex-wrap gap-4 pt-2">
             <Link to="/room-planner">
               <Button size="lg" className="font-semibold text-base px-8">
