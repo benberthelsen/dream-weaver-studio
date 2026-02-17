@@ -12,11 +12,11 @@ export function SupplierLogos() {
         <p className="text-sm text-muted-foreground mb-10">
           <Link to="/collections" className="text-accent hover:underline font-medium">Browse Our Full Material Library →</Link>
         </p>
-        <div className="flex flex-wrap justify-center items-center gap-8 md:gap-12">
+        <div className="flex flex-wrap justify-center items-center gap-3 md:gap-4">
           {suppliers.map((name) => (
             <span
               key={name}
-              className="text-lg md:text-xl font-bold text-muted-foreground/50 hover:text-foreground transition-colors tracking-wide"
+              className="px-5 py-2.5 rounded-lg border border-border bg-card text-base md:text-lg font-bold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors tracking-wide"
             >
               {name}
             </span>

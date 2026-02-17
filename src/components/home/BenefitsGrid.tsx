@@ -1,24 +1,23 @@
-import { DollarSign, Gem, Cpu, Truck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 const benefits = [
   {
-    icon: DollarSign,
+    image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop",
     title: "Save Thousands",
     description: "DIY flat‑pack means you control installation costs and can reallocate budget to finishes.",
   },
   {
-    icon: Gem,
+    image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=400&h=300&fit=crop",
     title: "Quality Materials",
     description: "Trade‑quality components from premium Australian suppliers with instant cost estimates.",
   },
   {
-    icon: Cpu,
+    image: "https://images.unsplash.com/photo-1600566753086-00f18f6b0049?w=400&h=300&fit=crop",
     title: "Precision Made",
     description: "Designed online, manufactured to spec on state-of-the-art CNC machinery.",
   },
   {
-    icon: Truck,
+    image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400&h=300&fit=crop",
     title: "Delivered to You",
     description: "Flat-packed, carefully protected, and delivered to your door within our service area.",
   },
@@ -33,12 +32,17 @@ export function BenefitsGrid() {
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
           {benefits.map((b) => (
-            <Card key={b.title} className="border-border bg-card hover:shadow-md transition-shadow">
-              <CardContent className="pt-8 pb-6 px-6 text-center space-y-4">
-                <div className="mx-auto w-14 h-14 rounded-xl bg-secondary flex items-center justify-center">
-                  <b.icon className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="text-lg font-bold text-foreground">{b.title}</h3>
+            <Card key={b.title} className="border-border bg-card hover:shadow-md transition-shadow overflow-hidden">
+              <div className="aspect-[4/3] overflow-hidden">
+                <img
+                  src={b.image}
+                  alt={b.title}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              </div>
+              <CardContent className="pt-5 pb-5 px-5 space-y-2">
+                <h3 className="text-base font-bold text-foreground">{b.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{b.description}</p>
               </CardContent>
             </Card>
