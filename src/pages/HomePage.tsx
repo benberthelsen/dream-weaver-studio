@@ -1,6 +1,7 @@
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { HeroSection } from "@/components/home/HeroSection";
 import { ProcessSteps } from "@/components/home/ProcessSteps";
+import { TrustStrip } from "@/components/home/TrustStrip";
 import { BenefitsGrid } from "@/components/home/BenefitsGrid";
 import { ComparisonTeaser } from "@/components/home/ComparisonTeaser";
 import { SupplierLogos } from "@/components/home/SupplierLogos";
@@ -13,6 +14,7 @@ const HomePage = () => {
     <SiteLayout>
       <HeroSection />
       <ProcessSteps />
+      <TrustStrip />
       <BenefitsGrid />
       <ComparisonTeaser />
       <SupplierLogos />
