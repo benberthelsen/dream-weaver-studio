@@ -24,15 +24,14 @@ const testimonials = [
 
 export function TestimonialCards() {
   return (
-    <section className="py-20 bg-background">
+    <section className="py-20 bg-secondary">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-14">
-          <p className="text-sm font-semibold uppercase tracking-widest text-accent mb-2">Testimonials</p>
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground">What Our Customers Say</h2>
-        </div>
+        <h2 className="text-2xl md:text-3xl text-center text-foreground mb-14">
+          What Our Customers Say
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {testimonials.map((t) => (
-            <Card key={t.name} className="border-border/60 bg-card">
+            <Card key={t.name} className="border-border bg-card">
               <CardContent className="pt-6 pb-6 px-6 space-y-4">
                 <div className="flex gap-0.5">
                   {Array.from({ length: t.stars }).map((_, i) => (

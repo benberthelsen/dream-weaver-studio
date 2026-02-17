@@ -22,7 +22,6 @@ const ContactPage = () => {
 
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
-
     const nameFirst = (formData.get("name_first") as string)?.trim();
     const nameLast = (formData.get("name_last") as string)?.trim();
     const email = (formData.get("email") as string)?.trim();
@@ -36,45 +35,32 @@ const ContactPage = () => {
     }
 
     const { error } = await supabase.from("contact_submissions").insert({
-      name_first: nameFirst,
-      name_last: nameLast,
-      email,
-      phone,
-      project_type: projectType,
-      message,
-      source_page: "/contact",
+      name_first: nameFirst, name_last: nameLast, email, phone,
+      project_type: projectType, message, source_page: "/contact",
     });
 
     if (error) {
       toast.error("Something went wrong. Please try again or call us directly.");
-      console.error("Contact form error:", error);
     } else {
       toast.success("Thanks! We'll be in touch within 1 business day.");
       form.reset();
       setProjectType("");
     }
-
     setSending(false);
   };
 
   return (
     <SiteLayout>
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-14 max-w-2xl mx-auto">
-            <p className="text-sm font-semibold uppercase tracking-widest text-primary mb-3">
-              Contact
-            </p>
-            <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
-              Get in Touch
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              Have a question or ready to start? We'd love to hear from you. Fill in the form below and we'll get back to you within one business day.
-            </p>
-          </div>
+      <section className="py-20 md:py-28 bg-card border-b border-border">
+        <div className="container mx-auto px-4 text-center max-w-2xl">
+          <h1 className="text-4xl md:text-5xl text-foreground mb-6">Get in Touch</h1>
+          <p className="text-lg text-muted-foreground">Have a question or ready to start? We'd love to hear from you.</p>
+        </div>
+      </section>
 
+      <section className="py-16">
+        <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Contact form */}
             <Card className="lg:col-span-2 border-border bg-card">
               <CardContent className="p-6 md:p-8">
                 <form onSubmit={handleSubmit} className="space-y-5">
@@ -101,9 +87,7 @@ const ContactPage = () => {
                   <div className="space-y-2">
                     <Label htmlFor="project-type">Project Type *</Label>
                     <Select value={projectType} onValueChange={setProjectType} required>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
                         {projectTypes.map((t) => (
                           <SelectItem key={t} value={t.toLowerCase()}>{t}</SelectItem>
@@ -115,37 +99,32 @@ const ContactPage = () => {
                     <Label htmlFor="message">Message *</Label>
                     <Textarea id="message" name="message" rows={5} required placeholder="Tell us about your project…" maxLength={2000} />
                   </div>
-                  <Button type="submit" className="w-full font-semibold" disabled={sending}>
+                  <Button type="submit" className="w-full font-semibold bg-accent text-accent-foreground hover:bg-accent/90" disabled={sending}>
                     {sending ? "Sending…" : "Send Enquiry"}
                   </Button>
                 </form>
               </CardContent>
             </Card>
 
-            {/* Contact info sidebar */}
             <div className="space-y-6">
               <Card className="border-border bg-card">
                 <CardContent className="p-6 space-y-5">
                   <div className="flex items-start gap-3">
-                    <Phone className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <Phone className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Phone</p>
-                      <a href="tel:+61437732286" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                        0437 732 286
-                      </a>
+                      <a href="tel:+61437732286" className="text-sm text-muted-foreground hover:text-accent transition-colors">0437 732 286</a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <Mail className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Email</p>
-                      <a href="mailto:info@bowerbuilding.net" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                        info@bowerbuilding.net
-                      </a>
+                      <a href="mailto:info@bowerbuilding.net" className="text-sm text-muted-foreground hover:text-accent transition-colors">info@bowerbuilding.net</a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <MapPin className="h-5 w-5 text-accent shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Address</p>
                       <p className="text-sm text-muted-foreground">2/50 Owen St, Craglie 4877<br />QLD, Australia</p>
@@ -156,9 +135,7 @@ const ContactPage = () => {
               <Card className="border-border bg-card">
                 <CardContent className="p-6">
                   <p className="text-sm font-semibold text-foreground mb-2">Response Time</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    We aim to respond to every enquiry within one business day by phone or email.
-                  </p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">We aim to respond within one business day by phone or email.</p>
                 </CardContent>
               </Card>
             </div>
