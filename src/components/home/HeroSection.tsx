@@ -23,15 +23,24 @@ const quickSteps = [
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden min-h-[620px] md:min-h-[700px] flex items-center">
-      <img src={heroImage} alt="Modern flat-pack kitchen with white cabinets and timber accents" className="absolute inset-0 w-full h-full object-cover" />
-      <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/45 to-black/20" />
+    <section className="relative overflow-hidden min-h-[560px] md:min-h-[640px] flex items-center">
+      <img
+        src={heroImage}
+        alt="Modern flat-pack kitchen with white cabinets and timber accents"
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-primary/35" />
 
-      <div className="relative container mx-auto px-4 py-16 md:py-20">
-        <div className="max-w-2xl space-y-5 text-white">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl leading-tight">Custom Flat-Pack Cabinets, Cut to Size & Delivered</h1>
-          <p className="text-lg text-white/85 max-w-xl leading-relaxed">
-            Design your dream kitchen online. We cut, drill, and label every panel to your exact specs — ready for easy assembly.
+      <div className="relative container mx-auto px-4 py-20">
+        <div className="max-w-2xl space-y-6 text-primary-foreground">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl leading-tight">
+            Custom Flat-Pack Cabinets,
+            <br />
+            Cut to Size & Delivered
+          </h1>
+          <p className="text-lg md:text-xl text-primary-foreground/85 max-w-xl leading-relaxed">
+            Design your dream kitchen online. We cut, drill, and label every panel to your exact specs
+            — you assemble and save.
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             <Link to="/room-planner">
@@ -40,7 +49,11 @@ export function HeroSection() {
               </Button>
             </Link>
             <Link to="/pricing">
-              <Button size="lg" variant="outline" className="font-semibold text-base px-8 border-white/60 text-white hover:bg-white/10 bg-transparent">
+              <Button
+                size="lg"
+                variant="outline"
+                className="font-semibold text-base px-8 border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10 bg-transparent"
+              >
                 See Example Pricing
               </Button>
             </Link>

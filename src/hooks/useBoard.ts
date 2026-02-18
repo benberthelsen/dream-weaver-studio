@@ -13,6 +13,14 @@ interface StoredBoardState {
   style: string;
 }
 
+const BOARD_STORAGE_KEY = "bower_board_builder_state";
+
+interface StoredBoardState {
+  items: BoardItem[];
+  background: string;
+  style: string;
+}
+
 export function useBoard() {
   const [items, setItems] = useState<BoardItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -85,6 +93,7 @@ export function useBoard() {
     }
   }, []);
 
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
   const loadFavoritesToBoard = useCallback(async () => {
     const sessionId = getPaletteSessionId();
 
@@ -131,6 +140,8 @@ export function useBoard() {
     toast.success(`Loaded ${loadedItems.length} favorites to board`);
   }, []);
 
+=======
+>>>>>>> main
   const generateFlatlayMutation = useMutation({
     mutationFn: async () => {
       if (!items.length) {
@@ -176,7 +187,10 @@ export function useBoard() {
     bringToFront,
     saveBoard,
     loadBoard,
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
     loadFavoritesToBoard,
+=======
+>>>>>>> main
     generateFlatlay: generateFlatlayMutation.mutate,
     isGenerating: generateFlatlayMutation.isPending,
     generatedImage: generateFlatlayMutation.data?.image,

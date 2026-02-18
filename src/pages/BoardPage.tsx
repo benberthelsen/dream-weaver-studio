@@ -28,7 +28,6 @@ const BoardPage = () => {
     bringToFront,
     saveBoard,
     loadBoard,
-    loadFavoritesToBoard,
     generateFlatlay,
     isGenerating,
     generatedImage,
@@ -42,15 +41,10 @@ const BoardPage = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <Header
-        onOpenShowroom={() => setShowroomOpen(true)}
-        onSaveBoard={saveBoard}
-        onLoadBoard={loadBoard}
-        onLoadFavorites={() => void loadFavoritesToBoard()}
-      />
+      <Header onOpenShowroom={() => setShowroomOpen(true)} onSaveBoard={saveBoard} onLoadBoard={loadBoard} />
 
       <div className="border-b bg-secondary/40 px-4 py-2 text-xs text-muted-foreground">
-        Workflow: 1) Add products from Catalog, Favorites Board, or Virtual Studio → 2) Arrange on canvas → 3) Pick background + style → 4) Generate and download.
+        Workflow: 1) Add products from Catalog or Virtual Studio → 2) Arrange on canvas → 3) Pick background + style → 4) Generate and download.
       </div>
 
       <div className="flex-1 flex overflow-hidden">
