@@ -3,6 +3,15 @@ import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { BoardItem, CatalogItem } from "@/types/board";
 import { toast } from "sonner";
+import { getPaletteSessionId } from "@/lib/paletteSession";
+
+const BOARD_STORAGE_KEY = "bower_board_builder_state";
+
+interface StoredBoardState {
+  items: BoardItem[];
+  background: string;
+  style: string;
+}
 
 const BOARD_STORAGE_KEY = "bower_board_builder_state";
 
@@ -84,6 +93,55 @@ export function useBoard() {
     }
   }, []);
 
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
+  const loadFavoritesToBoard = useCallback(async () => {
+    const sessionId = getPaletteSessionId();
+
+    const { data, error } = await supabase
+      .from("liked_items")
+      .select(`
+        catalog_item:catalog_items(
+          *,
+          supplier:suppliers(*),
+          category:categories(*),
+          range:product_ranges(*)
+        )
+      `)
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      toast.error("Unable to load favorites into board");
+      return;
+    }
+
+    const favoriteProducts = (data || [])
+      .map((entry) => entry.catalog_item)
+      .filter((item): item is CatalogItem => Boolean(item));
+
+    if (!favoriteProducts.length) {
+      toast.message("No favorites found yet. Like products in Collections first.");
+      return;
+    }
+
+    const loadedItems: BoardItem[] = favoriteProducts.slice(0, 24).map((catalogItem, index) => ({
+      id: `${catalogItem.id}-${Date.now()}-${index}`,
+      catalogItem,
+      x: 80 + (index % 6) * 130,
+      y: 80 + Math.floor(index / 6) * 130,
+      width: 120,
+      height: 120,
+      rotation: 0,
+      zIndex: index + 1,
+    }));
+
+    setItems(loadedItems);
+    setSelectedId(null);
+    toast.success(`Loaded ${loadedItems.length} favorites to board`);
+  }, []);
+
+=======
+>>>>>>> main
   const generateFlatlayMutation = useMutation({
     mutationFn: async () => {
       if (!items.length) {
@@ -129,6 +187,10 @@ export function useBoard() {
     bringToFront,
     saveBoard,
     loadBoard,
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
+    loadFavoritesToBoard,
+=======
+>>>>>>> main
     generateFlatlay: generateFlatlayMutation.mutate,
     isGenerating: generateFlatlayMutation.isPending,
     generatedImage: generateFlatlayMutation.data?.image,

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useBoard } from "@/hooks/useBoard";
 import { useCatalogItems } from "@/hooks/useCatalog";
 import { Header } from "@/components/board/Header";
@@ -9,6 +10,7 @@ import { GalleryShowroom } from "@/components/board/GalleryShowroom";
 
 const BoardPage = () => {
   const [showroomOpen, setShowroomOpen] = useState(false);
+  const [searchParams] = useSearchParams();
   const { data: allItems } = useCatalogItems({});
 
   const {
@@ -30,6 +32,12 @@ const BoardPage = () => {
     isGenerating,
     generatedImage,
   } = useBoard();
+
+  useEffect(() => {
+    if (searchParams.get("fromFavorites") === "1") {
+      void loadFavoritesToBoard();
+    }
+  }, [searchParams, loadFavoritesToBoard]);
 
   return (
     <div className="h-screen flex flex-col bg-background">

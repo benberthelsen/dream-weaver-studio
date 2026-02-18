@@ -1,15 +1,26 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
+import { LayoutGrid, Save, FolderOpen, Sparkles, Layers, Settings, Upload, Heart } from "lucide-react";
+=======
 import { LayoutGrid, Save, FolderOpen, Sparkles, Layers, Settings, Upload } from "lucide-react";
+>>>>>>> main
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   onOpenShowroom?: () => void;
   onSaveBoard?: () => void;
   onLoadBoard?: () => void;
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
+  onLoadFavorites?: () => void;
+}
+
+export function Header({ onOpenShowroom, onSaveBoard, onLoadBoard, onLoadFavorites }: HeaderProps) {
+=======
 }
 
 export function Header({ onOpenShowroom, onSaveBoard, onLoadBoard }: HeaderProps) {
+>>>>>>> main
   const location = useLocation();
 
   const navLinks = [
@@ -58,6 +69,15 @@ export function Header({ onOpenShowroom, onSaveBoard, onLoadBoard }: HeaderProps
             Virtual Studio
           </Button>
         )}
+<<<<<<< codex/build-diy-cabinetry-website-for-bower-cabinets
+        {onLoadFavorites && (
+          <Button variant="outline" size="sm" onClick={onLoadFavorites}>
+            <Heart className="mr-2 h-4 w-4" />
+            Favorites Board
+          </Button>
+        )}
+=======
+>>>>>>> main
         {onLoadBoard && (
           <Button variant="outline" size="sm" onClick={onLoadBoard}>
             <Upload className="mr-2 h-4 w-4" />
