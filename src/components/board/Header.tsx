@@ -1,15 +1,18 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, Save, FolderOpen, Sparkles, Layers, Settings } from "lucide-react";
+import { LayoutGrid, Save, FolderOpen, Sparkles, Layers, Settings, Upload, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   onOpenShowroom?: () => void;
+  onSaveBoard?: () => void;
+  onLoadBoard?: () => void;
+  onLoadFavorites?: () => void;
 }
 
-export function Header({ onOpenShowroom }: HeaderProps) {
+export function Header({ onOpenShowroom, onSaveBoard, onLoadBoard, onLoadFavorites }: HeaderProps) {
   const location = useLocation();
-  
+
   const navLinks = [
     { path: "/", label: "Inspiration", icon: Sparkles },
     { path: "/collections", label: "Collections", icon: Layers },
@@ -38,9 +41,7 @@ export function Header({ onOpenShowroom }: HeaderProps) {
                 size="sm"
                 className={cn(
                   "gap-2",
-                  (location.pathname === link.path || 
-                   (link.path === "/" && location.pathname === "/inspiration")) && 
-                  "bg-muted"
+                  (location.pathname === link.path || (link.path === "/" && location.pathname === "/inspiration")) && "bg-muted"
                 )}
               >
                 <link.icon className="h-4 w-4" />
@@ -55,13 +56,27 @@ export function Header({ onOpenShowroom }: HeaderProps) {
         {onOpenShowroom && (
           <Button variant="outline" size="sm" onClick={onOpenShowroom}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            Showroom
+            Virtual Studio
           </Button>
         )}
-        <Button variant="outline" size="sm">
-          <Save className="mr-2 h-4 w-4" />
-          Save Board
-        </Button>
+        {onLoadFavorites && (
+          <Button variant="outline" size="sm" onClick={onLoadFavorites}>
+            <Heart className="mr-2 h-4 w-4" />
+            Favorites Board
+          </Button>
+        )}
+        {onLoadBoard && (
+          <Button variant="outline" size="sm" onClick={onLoadBoard}>
+            <Upload className="mr-2 h-4 w-4" />
+            Load Board
+          </Button>
+        )}
+        {onSaveBoard && (
+          <Button variant="outline" size="sm" onClick={onSaveBoard}>
+            <Save className="mr-2 h-4 w-4" />
+            Save Board
+          </Button>
+        )}
       </div>
     </header>
   );

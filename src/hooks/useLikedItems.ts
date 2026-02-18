@@ -2,16 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { CatalogItem } from "@/types/board";
 import { useEffect, useState } from "react";
+import { getPaletteSessionId } from "@/lib/paletteSession";
 
-// Generate or retrieve a persistent session ID
-function getSessionId(): string {
-  let sessionId = localStorage.getItem('palette_session_id');
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    localStorage.setItem('palette_session_id', sessionId);
-  }
-  return sessionId;
-}
 
 export interface LikedItem {
   id: string;
@@ -25,7 +17,7 @@ export function useLikedItems() {
   const [sessionId, setSessionId] = useState<string>('');
 
   useEffect(() => {
-    setSessionId(getSessionId());
+    setSessionId(getPaletteSessionId());
   }, []);
 
   return useQuery({
@@ -58,7 +50,7 @@ export function useLikeItem() {
 
   return useMutation({
     mutationFn: async (catalogItemId: string) => {
-      const sessionId = getSessionId();
+      const sessionId = getPaletteSessionId();
       
       const { data, error } = await supabase
         .from("liked_items")
@@ -83,7 +75,7 @@ export function useUnlikeItem() {
 
   return useMutation({
     mutationFn: async (catalogItemId: string) => {
-      const sessionId = getSessionId();
+      const sessionId = getPaletteSessionId();
       
       const { error } = await supabase
         .from("liked_items")
@@ -104,7 +96,7 @@ export function useClearLikedItems() {
 
   return useMutation({
     mutationFn: async () => {
-      const sessionId = getSessionId();
+      const sessionId = getPaletteSessionId();
       
       const { error } = await supabase
         .from("liked_items")
