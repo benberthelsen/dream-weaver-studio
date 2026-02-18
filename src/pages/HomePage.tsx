@@ -1,7 +1,7 @@
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { HeroSection } from "@/components/home/HeroSection";
-import { TrustStrip } from "@/components/home/TrustStrip";
 import { ProcessSteps } from "@/components/home/ProcessSteps";
+import { TrustStrip } from "@/components/home/TrustStrip";
 import { BenefitsGrid } from "@/components/home/BenefitsGrid";
 import { ComparisonTeaser } from "@/components/home/ComparisonTeaser";
 import { SupplierLogos } from "@/components/home/SupplierLogos";
@@ -13,8 +13,8 @@ const HomePage = () => {
   return (
     <SiteLayout>
       <HeroSection />
-      <TrustStrip />
       <ProcessSteps />
+      <TrustStrip />
       <BenefitsGrid />
       <ComparisonTeaser />
       <SupplierLogos />
